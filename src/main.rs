@@ -1,4 +1,5 @@
 use bevy::core_pipeline::bloom::Bloom;
+use bevy::core_pipeline::dof::{DepthOfField, DepthOfFieldMode};
 use bevy::core_pipeline::tonemapping::Tonemapping;
 use bevy::pbr::ScreenSpaceAmbientOcclusion;
 use bevy::pbr::{DistanceFog, FogFalloff, NotShadowCaster};
@@ -39,6 +40,13 @@ fn spawn_camera(mut commands: Commands) {
             falloff: FogFalloff::Exponential { density: 0.035 },
             // push fog slightly “in” so background softens
             // (distance is relative to camera; play with value range in your game space)
+            ..default()
+        },
+        DepthOfField {
+            mode: DepthOfFieldMode::Bokeh, // or Gaussian
+            focal_distance: 15.0,          // distance from camera to focus band
+            aperture_f_stops: 0.2,         // lower = blurrier
+            sensor_height: 0.01866,        // Super 35 default
             ..default()
         },
         // Extremely light SSAO helps creases without mud (optional; safe default)
