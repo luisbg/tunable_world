@@ -6,7 +6,21 @@ use bevy::pbr::ScreenSpaceAmbientOcclusion;
 use bevy::pbr::{DistanceFog, FogFalloff, NotShadowCaster};
 use bevy::prelude::*;
 use bevy::render::mesh::Mesh;
+use bevy::render::render_resource::Face;
 use bevy_egui::{EguiContexts, EguiPlugin, EguiPrimaryContextPass, egui};
+
+/// Tag on the outline child entity so we can update it en masse.
+#[derive(Component)]
+struct OutlineShell;
+
+/// Outline settings (shared across all outlines).
+#[derive(Resource)]
+struct OutlineParams {
+    enabled: bool,
+    width: f32,   // uniform scale delta (0.0 => off, ~0.02–0.06 good)
+    color: Color, // outline color
+    material: Handle<StandardMaterial>,
+}
 
 fn main() {
     App::new()
@@ -20,7 +34,8 @@ fn main() {
         // UI plugin (egui)
         .add_plugins(EguiPlugin::default())
         .add_systems(Startup, (spawn_camera, spawn_light, spawn_scene))
-        .add_systems(EguiPrimaryContextPass, dof_egui_panel)
+        .add_systems(EguiPrimaryContextPass, dof_and_outline_panel)
+        .add_systems(Update, update_outlines)
         .run();
 }
 
@@ -123,6 +138,24 @@ fn spawn_scene(
         ..default()
     });
 
+    // Shared outline material (front-face culled so backfaces show; unlit for flat color)
+    let outline_color = Color::srgb(0.08, 0.10, 0.12);
+    let outline_material = materials.add(StandardMaterial {
+        base_color: outline_color,
+        unlit: true,
+        cull_mode: Some(Face::Front),
+        // keep depth test/write default so it hugs the mesh properly
+        ..default()
+    });
+
+    // Make outline settings globally available (egui will edit these)
+    commands.insert_resource(OutlineParams {
+        enabled: true,
+        width: 0.02,
+        color: outline_color,
+        material: outline_material.clone(),
+    });
+
     // --- Mesh prims
     let plane = meshes.add(Mesh::from(Plane3d::default()));
     let step = meshes.add(Mesh::from(Cuboid::new(4.0, 0.6, 4.0)));
@@ -140,55 +173,82 @@ fn spawn_scene(
 
     // --- Terraces: a few chunky steps at different heights
     // Left terrace (low)
-    commands.spawn((
-        Mesh3d(step.clone()),
-        MeshMaterial3d(grass_b.clone()),
+    spawn_outlined(
+        &mut commands,
+        step.clone(),
+        grass_b.clone(),
         Transform::from_xyz(-2.5, 0.3, 1.0),
-        Name::new("TerraceLow"),
-    ));
+        outline_material.clone(),
+        0.03,
+        "TerraceLow",
+    );
 
     // Mid terrace
-    commands.spawn((
-        Mesh3d(step.clone()),
-        MeshMaterial3d(grass_a.clone()),
+    spawn_outlined(
+        &mut commands,
+        step.clone(),
+        grass_a.clone(),
         Transform::from_xyz(1.5, 0.3, -0.5),
-        Name::new("TerraceMid"),
-    ));
+        outline_material.clone(),
+        0.03,
+        "TerraceMid",
+    );
 
     // Tall terrace (stacked)
-    commands.spawn((
-        Mesh3d(step.clone()),
-        MeshMaterial3d(grass_b.clone()),
+    let high = spawn_outlined(
+        &mut commands,
+        step.clone(),
+        grass_b.clone(),
         Transform::from_xyz(5.0, 0.3, 3.5),
-        Name::new("TerraceHighBase"),
-    ));
-    commands.spawn((
-        Mesh3d(slab.clone()),
-        MeshMaterial3d(dirt.clone()),
-        Transform::from_xyz(5.0, 0.75, 3.5),
-        Name::new("TerraceHighCap"),
-    ));
+        outline_material.clone(),
+        0.03,
+        "TerraceHighBase",
+    );
+    // Cap (outlined)
+    commands.entity(high).with_children(|c| {
+        c.spawn((
+            Mesh3d(slab.clone()),
+            MeshMaterial3d(dirt.clone()),
+            Transform::from_xyz(0.0, 0.45, 0.0),
+            Name::new("TerraceHighCap"),
+        ));
+        c.spawn((
+            Mesh3d(slab.clone()),
+            MeshMaterial3d(outline_material.clone()),
+            Transform::from_translation(Vec3::new(0.0, 0.45, 0.0))
+                * Transform::from_scale(Vec3::splat(1.03)),
+            NotShadowCaster,
+            OutlineShell,
+            Name::new("TerraceHighCap_Outline"),
+        ));
+    });
 
     // --- A few “stone” blocks to catch highlights (bevel-ish via lighting)
     for (i, &(dx, dz)) in [(-1.0, 0.0), (0.0, 1.0), (1.0, -1.0), (2.0, 2.0)]
         .iter()
         .enumerate()
     {
-        commands.spawn((
-            Mesh3d(block.clone()),
-            MeshMaterial3d(stone.clone()),
+        spawn_outlined(
+            &mut commands,
+            block.clone(),
+            stone.clone(),
             Transform::from_xyz(2.0 + dx as f32 * 0.9, 0.5, 1.5 + dz),
-            Name::new(format!("Stone{}", i)),
-        ));
+            outline_material.clone(),
+            0.03,
+            &format!("Stone{}", i),
+        );
     }
 
     // --- Emissive “crystal” on the mid terrace so bloom has a target
-    commands.spawn((
-        Mesh3d(sphere.clone()),
-        MeshMaterial3d(crystal.clone()),
+    spawn_outlined(
+        &mut commands,
+        sphere.clone(),
+        crystal,
         Transform::from_xyz(1.5, 0.65, -0.5),
-        Name::new("Crystal"),
-    ));
+        outline_material.clone(),
+        0.03,
+        "Crystal",
+    );
 
     // --- A thin “water” slab (very light roughness so the sun sparkles a bit)
     let water = materials.add(StandardMaterial {
@@ -210,10 +270,68 @@ fn spawn_scene(
     ));
 }
 
-/// Small egui window to live-tune camera Depth of Field
-fn dof_egui_panel(
+/// Helper: spawn a mesh with an outline child.
+fn spawn_outlined(
+    commands: &mut Commands,
+    mesh: Handle<Mesh>,
+    material: Handle<StandardMaterial>,
+    transform: Transform,
+    outline_mat: Handle<StandardMaterial>,
+    width: f32,
+    name: &str,
+) -> Entity {
+    let parent = commands
+        .spawn((
+            Mesh3d(mesh.clone()),
+            MeshMaterial3d(material.clone()),
+            transform,
+            Name::new(name.to_string()),
+        ))
+        .id();
+
+    // Outline child: slightly larger backfaces-only, unlit
+    commands.entity(parent).with_children(|c| {
+        c.spawn((
+            Mesh3d(mesh),
+            MeshMaterial3d(outline_mat),
+            Transform::from_scale(Vec3::splat(1.0 + width.max(0.0))),
+            NotShadowCaster,
+            OutlineShell,
+            Name::new(format!("{name}_Outline")),
+        ));
+    });
+
+    parent
+}
+
+/// Update all outline shells: scale for width; hide by scaling to zero if disabled.
+fn update_outlines(
+    outline: Res<OutlineParams>,
+    mut q_shells: Query<&mut Transform, With<OutlineShell>>,
+) {
+    if !outline.is_changed() && q_shells.is_empty() {
+        return;
+    }
+    let scale = if outline.enabled {
+        1.0 + outline.width.max(0.0)
+    } else {
+        0.0 // effectively hides the outline without relying on Visibility API differences
+    };
+    for mut t in &mut q_shells {
+        // Keep whatever translation/rotation they have; just adjust uniform scale
+        let basis = t.scale.x.max(t.scale.y).max(t.scale.z);
+        // If we previously hid it (0), basis could be 0; just set anew.
+        let _ = basis; // not used further; set directly:
+        t.scale = Vec3::splat(scale);
+    }
+}
+
+/// egui panel: tune DoF and Outline live.
+fn dof_and_outline_panel(
     mut ctxs: EguiContexts,
     mut q_cam: Query<(&mut DepthOfField, &GlobalTransform), With<Camera3d>>,
+    mut outline: ResMut<OutlineParams>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
     let Ok((mut dof, cam_xform)) = q_cam.single_mut() else {
         return;
@@ -224,31 +342,56 @@ fn dof_egui_panel(
     let mut f_stops = dof.aperture_f_stops;
     let mut bokeh = matches!(dof.mode, DepthOfFieldMode::Bokeh);
 
-    egui::Window::new("Depth of Field")
-        .default_width(260.0)
+    let mut enabled = outline.enabled;
+    let mut width = outline.width;
+    let mut color = outline.color;
+
+    egui::Window::new("Depth of Field & Outline")
+        .default_width(300.0)
         .show(ctxs.ctx_mut().expect("single egui context"), |ui| {
-            ui.label("Tune for a miniature/tilt-shift feel:");
+            ui.heading("Depth of Field");
             ui.add(egui::Slider::new(&mut focal_distance, 1.0..=40.0).text("Focal distance"));
             ui.add(
                 egui::Slider::new(&mut f_stops, 0.01..=64.0)
                     .logarithmic(true)
                     .text("Aperture (f-stops)"),
             );
-            ui.checkbox(&mut bokeh, "Bokeh mode (prettier, costlier)");
+            ui.checkbox(&mut bokeh, "Bokeh mode (prettier)");
+
             ui.horizontal(|ui| {
-                if ui.button("Snap focus to origin (0,0,0)").clicked() {
+                if ui.button("Snap focus to origin").clicked() {
                     let cam_pos = cam_xform.translation();
                     focal_distance = cam_pos.length();
                 }
-                if ui.button("Reset").clicked() {
+                if ui.button("Reset DoF").clicked() {
                     focal_distance = 8.0;
                     f_stops = 2.0;
                     bokeh = true;
                 }
             });
+
+            ui.separator();
+
+            ui.heading("Outline");
+            ui.checkbox(&mut enabled, "Enabled");
+            ui.add(egui::Slider::new(&mut width, 0.0..=0.10).text("Width"));
+            // Simple RGB picker (gamma-aware conversions aren’t critical here)
+            let mut rgb = [
+                color.to_linear().red,
+                color.to_linear().green,
+                color.to_linear().blue,
+            ];
+            if ui.color_edit_button_rgb(&mut rgb).changed() {
+                color = Color::linear_rgb(rgb[0], rgb[1], rgb[2]);
+            }
+            if ui.button("Reset Outline").clicked() {
+                enabled = true;
+                width = 0.02;
+                color = Color::srgb(0.08, 0.10, 0.12);
+            }
         });
 
-    // Apply changes back to the component
+    // Apply DoF
     dof.focal_distance = focal_distance.max(0.1);
     dof.aperture_f_stops = f_stops.clamp(0.01, 64.0);
     dof.mode = if bokeh {
@@ -256,4 +399,14 @@ fn dof_egui_panel(
     } else {
         DepthOfFieldMode::Gaussian
     };
+
+    // Apply Outline params (change shared material color)
+    if let Some(mat) = materials.get_mut(&outline.material) {
+        mat.base_color = color;
+        mat.unlit = true;
+        mat.cull_mode = Some(Face::Front);
+    }
+    outline.enabled = enabled;
+    outline.width = width.clamp(0.0, 0.25);
+    outline.color = color;
 }
