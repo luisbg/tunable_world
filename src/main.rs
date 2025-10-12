@@ -1,12 +1,12 @@
 use bevy::core_pipeline::bloom::Bloom;
 use bevy::core_pipeline::dof::{DepthOfField, DepthOfFieldMode};
 use bevy::core_pipeline::tonemapping::Tonemapping;
+use bevy::math::primitives::{Cuboid, Plane3d, Sphere};
 use bevy::pbr::ScreenSpaceAmbientOcclusion;
 use bevy::pbr::{DistanceFog, FogFalloff, NotShadowCaster};
 use bevy::prelude::*;
 use bevy::render::mesh::Mesh;
-
-use bevy::math::primitives::{Cuboid, Plane3d, Sphere};
+use bevy_egui::{EguiContexts, EguiPlugin, EguiPrimaryContextPass, egui};
 
 fn main() {
     App::new()
@@ -17,7 +17,10 @@ fn main() {
             }),
             ..default()
         }))
+        // UI plugin (egui)
+        .add_plugins(EguiPlugin::default())
         .add_systems(Startup, (spawn_camera, spawn_light, spawn_scene))
+        .add_systems(EguiPrimaryContextPass, dof_egui_panel)
         .run();
 }
 
@@ -205,4 +208,52 @@ fn spawn_scene(
         NotShadowCaster,
         Name::new("Water"),
     ));
+}
+
+/// Small egui window to live-tune camera Depth of Field
+fn dof_egui_panel(
+    mut ctxs: EguiContexts,
+    mut q_cam: Query<(&mut DepthOfField, &GlobalTransform), With<Camera3d>>,
+) {
+    let Ok((mut dof, cam_xform)) = q_cam.single_mut() else {
+        return;
+    };
+
+    // Local copies so sliders can edit smoothly
+    let mut focal_distance = dof.focal_distance;
+    let mut f_stops = dof.aperture_f_stops;
+    let mut bokeh = matches!(dof.mode, DepthOfFieldMode::Bokeh);
+
+    egui::Window::new("Depth of Field")
+        .default_width(260.0)
+        .show(ctxs.ctx_mut().expect("single egui context"), |ui| {
+            ui.label("Tune for a miniature/tilt-shift feel:");
+            ui.add(egui::Slider::new(&mut focal_distance, 1.0..=40.0).text("Focal distance"));
+            ui.add(
+                egui::Slider::new(&mut f_stops, 0.01..=64.0)
+                    .logarithmic(true)
+                    .text("Aperture (f-stops)"),
+            );
+            ui.checkbox(&mut bokeh, "Bokeh mode (prettier, costlier)");
+            ui.horizontal(|ui| {
+                if ui.button("Snap focus to origin (0,0,0)").clicked() {
+                    let cam_pos = cam_xform.translation();
+                    focal_distance = cam_pos.length();
+                }
+                if ui.button("Reset").clicked() {
+                    focal_distance = 8.0;
+                    f_stops = 2.0;
+                    bokeh = true;
+                }
+            });
+        });
+
+    // Apply changes back to the component
+    dof.focal_distance = focal_distance.max(0.1);
+    dof.aperture_f_stops = f_stops.clamp(0.01, 64.0);
+    dof.mode = if bokeh {
+        DepthOfFieldMode::Bokeh
+    } else {
+        DepthOfFieldMode::Gaussian
+    };
 }

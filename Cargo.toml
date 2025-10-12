@@ -5,3 +5,4 @@ edition = "2024"
 
 [dependencies]
 bevy = { version = "0.16", features = ["jpeg", "png"] }
+bevy_egui = "0.36"
