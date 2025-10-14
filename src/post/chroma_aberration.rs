@@ -24,7 +24,7 @@ use bevy::{
 };
 
 #[derive(Component, Default, Clone, Copy, ExtractComponent, ShaderType)]
-pub struct PostProcessSettings {
+pub struct ChromaAberrationSettings {
     pub intensity: f32,
 }
 
@@ -45,11 +45,11 @@ impl ViewNode for PostProcessNode {
     // This query will only run on the view entity
     type ViewQuery = (
         &'static ViewTarget,
-        // This makes sure the node only runs on cameras with the PostProcessSettings component
-        &'static PostProcessSettings,
+        // This makes sure the node only runs on cameras with the ChromaAberrationSettings component
+        &'static ChromaAberrationSettings,
         // As there could be multiple post processing components sent to the GPU (one per camera),
         // we need to get the index of the one that is associated with the current view.
-        &'static DynamicUniformIndex<PostProcessSettings>,
+        &'static DynamicUniformIndex<ChromaAberrationSettings>,
     );
 
     // Runs the node logic
@@ -82,7 +82,7 @@ impl ViewNode for PostProcessNode {
         };
 
         // Get the settings uniform binding
-        let settings_uniforms = world.resource::<ComponentUniforms<PostProcessSettings>>();
+        let settings_uniforms = world.resource::<ComponentUniforms<ChromaAberrationSettings>>();
         let Some(settings_binding) = settings_uniforms.uniforms().binding() else {
             return Ok(());
         };
@@ -145,9 +145,9 @@ impl ViewNode for PostProcessNode {
     }
 }
 
-pub struct PostProcessPlugin;
+pub struct ChromaAberrationPlugin;
 
-impl Plugin for PostProcessPlugin {
+impl Plugin for ChromaAberrationPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins((
             // The settings will be a component that lives in the main world but will
@@ -156,11 +156,11 @@ impl Plugin for PostProcessPlugin {
             // This plugin will take care of extracting it automatically.
             // It's important to derive [`ExtractComponent`] on [`PostProcessingSettings`]
             // for this plugin to work correctly.
-            ExtractComponentPlugin::<PostProcessSettings>::default(),
+            ExtractComponentPlugin::<ChromaAberrationSettings>::default(),
             // The settings will also be the data used in the shader.
             // This plugin will prepare the component for the GPU by creating a uniform buffer
             // and writing the data to that buffer every frame.
-            UniformComponentPlugin::<PostProcessSettings>::default(),
+            UniformComponentPlugin::<ChromaAberrationSettings>::default(),
         ));
 
         // We need to get the render app from the main app
@@ -236,7 +236,7 @@ impl FromWorld for PostProcessPipeline {
                     // The sampler that will be used to sample the screen texture
                     sampler(SamplerBindingType::Filtering),
                     // The settings uniform that will control the effect
-                    uniform_buffer::<PostProcessSettings>(true),
+                    uniform_buffer::<ChromaAberrationSettings>(true),
                 ),
             ),
         );

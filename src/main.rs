@@ -12,7 +12,7 @@ use bevy::{
 use bevy_egui::{EguiContexts, EguiPlugin, EguiPrimaryContextPass, egui};
 
 mod post;
-use crate::post::chroma_aberration::{PostProcessPlugin, PostProcessSettings};
+use crate::post::chroma_aberration::{ChromaAberrationPlugin, ChromaAberrationSettings};
 use crate::post::crt::{CRTPlugin, CRTSettings};
 
 /// Tag on the outline child entity so we can update it en masse.
@@ -37,7 +37,7 @@ fn main() {
             }),
             ..default()
         }))
-        .add_plugins(PostProcessPlugin)
+        .add_plugins(ChromaAberrationPlugin)
         .add_plugins(CRTPlugin)
         // UI plugin (egui)
         .add_plugins(EguiPlugin::default())
@@ -76,7 +76,7 @@ fn spawn_camera(mut commands: Commands) {
         Msaa::Off,
         // Add the setting to the camera.
         // This component is also used to determine on which camera to run the post processing effect.
-        PostProcessSettings {
+        ChromaAberrationSettings {
             intensity: 0.002,
             ..default()
         },
@@ -427,7 +427,7 @@ fn dof_and_outline_panel(
 }
 
 fn tweak_ca_with_keyboard(
-    mut settings: Query<&mut PostProcessSettings>,
+    mut settings: Query<&mut ChromaAberrationSettings>,
     kb: Res<ButtonInput<KeyCode>>,
 ) {
     for mut setting in &mut settings {
