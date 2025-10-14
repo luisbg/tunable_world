@@ -347,6 +347,7 @@ fn dof_and_outline_panel(
     mut q_cam: Query<(&mut DepthOfField, &GlobalTransform), With<Camera3d>>,
     mut outline: ResMut<OutlineParams>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    mut chroma_settings: Query<&mut ChromaAberrationSettings>,
 ) {
     let Ok((mut dof, cam_xform)) = q_cam.single_mut() else {
         return;
@@ -361,7 +362,7 @@ fn dof_and_outline_panel(
     let mut width = outline.width;
     let mut color = outline.color;
 
-    egui::Window::new("Depth of Field & Outline")
+    egui::Window::new("Effect settings")
         .default_width(300.0)
         .show(ctxs.ctx_mut().expect("single egui context"), |ui| {
             ui.heading("Depth of Field");
@@ -403,6 +404,17 @@ fn dof_and_outline_panel(
                 enabled = true;
                 width = 0.02;
                 color = Color::srgb(0.08, 0.10, 0.12);
+            }
+
+            ui.separator();
+
+            ui.heading("Chromatic Aberration");
+            if let Ok(mut ca) = chroma_settings.single_mut() {
+                ui.add(
+                    egui::Slider::new(&mut ca.intensity, 0.0..=0.05)
+                        .logarithmic(true)
+                        .text("Intensity"),
+                );
             }
         });
 
