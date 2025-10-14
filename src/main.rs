@@ -13,6 +13,7 @@ use bevy_egui::{EguiContexts, EguiPlugin, EguiPrimaryContextPass, egui};
 
 mod post;
 use crate::post::chroma_aberration::{PostProcessPlugin, PostProcessSettings};
+use crate::post::crt::{CRTPlugin, CRTSettings};
 
 /// Tag on the outline child entity so we can update it en masse.
 #[derive(Component)]
@@ -37,6 +38,7 @@ fn main() {
             ..default()
         }))
         .add_plugins(PostProcessPlugin)
+        .add_plugins(CRTPlugin)
         // UI plugin (egui)
         .add_plugins(EguiPlugin::default())
         .add_systems(Startup, (spawn_camera, spawn_light, spawn_scene))
@@ -77,6 +79,11 @@ fn spawn_camera(mut commands: Commands) {
         PostProcessSettings {
             intensity: 0.002,
             ..default()
+        },
+        CRTSettings {
+            intensity: 0.025,
+            scanline_freq: 202.5,
+            line_intensity: 0.1,
         },
         Name::new("MainCamera"),
     ));
