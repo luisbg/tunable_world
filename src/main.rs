@@ -59,7 +59,7 @@ fn main() {
         .add_plugins(EguiPlugin::default())
         .add_systems(Startup, (spawn_camera, spawn_light, spawn_scene))
         .add_systems(EguiPrimaryContextPass, dof_and_outline_panel)
-        .add_systems(Update, update_outlines)
+        .add_systems(Update, (update_outlines, tweak_ca_with_keyboard))
         .run();
 }
 
@@ -694,4 +694,19 @@ fn dof_and_outline_panel(
     outline.enabled = enabled;
     outline.width = width.clamp(0.0, 0.25);
     outline.color = color;
+}
+
+fn tweak_ca_with_keyboard(
+    mut settings: Query<&mut PostProcessSettings>,
+    kb: Res<ButtonInput<KeyCode>>,
+) {
+    for mut setting in &mut settings {
+        // Quick live-tweaking with keys (optional)
+        if kb.just_pressed(KeyCode::KeyV) {
+            setting.intensity = (setting.intensity + 0.0005).min(1.0);
+        }
+        if kb.just_pressed(KeyCode::KeyB) {
+            setting.intensity = (setting.intensity - 0.0005).max(0.0);
+        }
+    }
 }
