@@ -4,17 +4,21 @@
 @group(0) @binding(1) var texture_sampler: sampler;
 
 struct PostProcessSettings {
+	enabled: u32,
 	intensity: f32,
 	scanline_freq: f32,
 	line_intensity: f32,
-#ifdef SIXTEEN_BYTE_ALIGNMENT
-	_webgl2_padding: vec3<f32>
-#endif
 };
 @group(0) @binding(2) var<uniform> settings: PostProcessSettings;
 
 @fragment
 fn fragment(in: FullscreenVertexOutput) -> @location(0) vec4<f32> {
+	let base = textureSample(screen_texture, texture_sampler, in.uv);
+
+	if (settings.enabled == 0u) {
+		return base;
+	}
+
 	let uv = in.uv;
 
 	let centered_uv = uv * 2.0 - vec2<f32>(1.0);

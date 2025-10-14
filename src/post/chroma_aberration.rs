@@ -25,13 +25,14 @@ use bevy::{
 
 #[derive(Component, Default, Clone, Copy, ExtractComponent, ShaderType)]
 pub struct ChromaAberrationSettings {
+    pub enabled: u32, // ShaderType doesn't support bool
     pub intensity: f32,
 }
 
 #[derive(Debug, Hash, PartialEq, Eq, Clone, RenderLabel)]
 pub struct PostProcessLabel;
 
-const SHADER_ASSET_PATH: &str = "shaders/post_processing.wgsl";
+const SHADER_ASSET_PATH: &str = "shaders/chromatic_aberration.wgsl";
 
 // The post process node used for the render graph
 #[derive(Default)]

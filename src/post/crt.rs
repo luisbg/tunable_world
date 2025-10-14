@@ -23,7 +23,7 @@ use bevy::{
     },
 };
 
-const SHADER_ASSET_PATH: &str = "shaders/post_processing_crt.wgsl";
+const SHADER_ASSET_PATH: &str = "shaders/crt.wgsl";
 
 pub struct CRTPlugin;
 
@@ -185,6 +185,7 @@ impl FromWorld for PostProcessPipeline {
 #[derive(Component, Default, Clone, Copy, ExtractComponent, ShaderType)]
 #[repr(C, align(16))]
 pub struct CRTSettings {
+    pub enabled: u32, // ShaderType doesn't support bool
     pub intensity: f32,
     pub scanline_freq: f32,
     pub line_intensity: f32,

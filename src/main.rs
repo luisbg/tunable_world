@@ -77,10 +77,11 @@ fn spawn_camera(mut commands: Commands) {
         // Add the setting to the camera.
         // This component is also used to determine on which camera to run the post processing effect.
         ChromaAberrationSettings {
+            enabled: 1,
             intensity: 0.002,
-            ..default()
         },
         CRTSettings {
+            enabled: 1,
             intensity: 0.025,
             scanline_freq: 202.5,
             line_intensity: 0.1,
@@ -411,17 +412,25 @@ fn dof_and_outline_panel(
 
             ui.heading("Chromatic Aberration");
             if let Ok(mut ca) = chroma_settings.single_mut() {
+                let mut on = ca.enabled != 0;
+
                 ui.add(
                     egui::Slider::new(&mut ca.intensity, 0.0..=0.05)
                         .logarithmic(true)
                         .text("Intensity"),
                 );
+                let resp = ui.checkbox(&mut on, "Enabled");
+                if resp.changed() {
+                    ca.enabled = on as u32; // 1 or 0
+                }
             }
 
             ui.separator();
 
             ui.heading("CRT");
             if let Ok(mut crt) = crt_settings.single_mut() {
+                let mut on = crt.enabled != 0;
+
                 ui.add(
                     egui::Slider::new(&mut crt.intensity, 0.0..=0.5)
                         .logarithmic(true)
@@ -437,6 +446,10 @@ fn dof_and_outline_panel(
                         .logarithmic(true)
                         .text("Line Intensity"),
                 );
+                let resp = ui.checkbox(&mut on, "Enabled");
+                if resp.changed() {
+                    crt.enabled = on as u32; // 1 or 0
+                }
             }
         });
 
