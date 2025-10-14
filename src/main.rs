@@ -348,6 +348,7 @@ fn dof_and_outline_panel(
     mut outline: ResMut<OutlineParams>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut chroma_settings: Query<&mut ChromaAberrationSettings>,
+    mut crt_settings: Query<&mut CRTSettings>,
 ) {
     let Ok((mut dof, cam_xform)) = q_cam.single_mut() else {
         return;
@@ -414,6 +415,27 @@ fn dof_and_outline_panel(
                     egui::Slider::new(&mut ca.intensity, 0.0..=0.05)
                         .logarithmic(true)
                         .text("Intensity"),
+                );
+            }
+
+            ui.separator();
+
+            ui.heading("CRT");
+            if let Ok(mut crt) = crt_settings.single_mut() {
+                ui.add(
+                    egui::Slider::new(&mut crt.intensity, 0.0..=0.5)
+                        .logarithmic(true)
+                        .text("Intensity"),
+                );
+                ui.add(
+                    egui::Slider::new(&mut crt.scanline_freq, 50.0..=500.0)
+                        .logarithmic(true)
+                        .text("Scanline Frequency"),
+                );
+                ui.add(
+                    egui::Slider::new(&mut crt.line_intensity, 0.0..=1.0)
+                        .logarithmic(true)
+                        .text("Line Intensity"),
                 );
             }
         });
