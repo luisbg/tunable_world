@@ -11,7 +11,10 @@ use bevy::{
 };
 use bevy_egui::{EguiContexts, EguiPlugin, EguiPrimaryContextPass, egui};
 
+mod inspector;
 mod post;
+
+use crate::inspector::{Editable, InspectorPlugin};
 use crate::post::chroma_aberration::{ChromaAberrationPlugin, ChromaAberrationSettings};
 use crate::post::crt::{CRTPlugin, CRTSettings};
 use crate::post::gradient_tint::{GradientTintPlugin, GradientTintSettings};
@@ -31,6 +34,7 @@ fn main() {
         .add_plugins(GradientTintPlugin)
         // UI plugin (egui)
         .add_plugins(EguiPlugin::default())
+        .add_plugins(InspectorPlugin)
         .add_systems(Startup, (spawn_camera, spawn_light, spawn_scene))
         .add_systems(EguiPrimaryContextPass, post_process_edit_panel)
         .add_systems(Update, update_outlines)
@@ -181,6 +185,7 @@ fn spawn_scene(
         Mesh3d(plane.clone()),
         MeshMaterial3d(grass_a.clone()),
         Transform::from_scale(Vec3::splat(30.0)), // large base
+        Editable,
         Name::new("BaseGround"),
     ));
 
@@ -279,6 +284,7 @@ fn spawn_scene(
         Transform::from_xyz(-2.7, 0.02, -2.3),
         // water usually shouldn’t cast shadows in this simple setup
         NotShadowCaster,
+        Editable,
         Name::new("Water"),
     ));
 }

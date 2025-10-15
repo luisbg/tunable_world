@@ -1,6 +1,8 @@
 use bevy::pbr::NotShadowCaster;
 use bevy::prelude::*;
 
+use crate::inspector::Editable;
+
 /// Tag on the outline child entity so we can update it en masse.
 #[derive(Component)]
 pub struct OutlineShell;
@@ -29,6 +31,7 @@ pub fn spawn_outlined(
             Mesh3d(mesh.clone()),
             MeshMaterial3d(material.clone()),
             transform,
+            Editable,
             Name::new(name.to_string()),
         ))
         .id();
