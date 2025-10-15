@@ -14,6 +14,7 @@ use bevy_egui::{EguiContexts, EguiPlugin, EguiPrimaryContextPass, egui};
 mod post;
 use crate::post::chroma_aberration::{ChromaAberrationPlugin, ChromaAberrationSettings};
 use crate::post::crt::{CRTPlugin, CRTSettings};
+use crate::post::gradient_tint::{GradientTintPlugin, GradientTintSettings};
 
 /// Tag on the outline child entity so we can update it en masse.
 #[derive(Component)]
@@ -39,6 +40,7 @@ fn main() {
         }))
         .add_plugins(ChromaAberrationPlugin)
         .add_plugins(CRTPlugin)
+        .add_plugins(GradientTintPlugin)
         // UI plugin (egui)
         .add_plugins(EguiPlugin::default())
         .add_systems(Startup, (spawn_camera, spawn_light, spawn_scene))
@@ -85,6 +87,13 @@ fn spawn_camera(mut commands: Commands) {
             intensity: 0.025,
             scanline_freq: 202.5,
             line_intensity: 0.1,
+        },
+        GradientTintSettings {
+            enabled: 1,
+            strength: 0.5,
+            _pad0: Vec2::ZERO,
+            color_top_right: Vec4::new(0.9, 0.2, 0.3, 1.0), // pink-tint
+            color_bottom_left: Vec4::new(0.2, 0.9, 0.8, 1.0), // cyan-tint
         },
         Name::new("MainCamera"),
     ));
@@ -348,8 +357,11 @@ fn dof_and_outline_panel(
     mut q_cam: Query<(&mut DepthOfField, &GlobalTransform), With<Camera3d>>,
     mut outline: ResMut<OutlineParams>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    mut chroma_settings: Query<&mut ChromaAberrationSettings>,
-    mut crt_settings: Query<&mut CRTSettings>,
+    (mut chroma_settings, mut crt_settings, mut gradient_tint_settings): (
+        Query<&mut ChromaAberrationSettings>,
+        Query<&mut CRTSettings>,
+        Query<&mut GradientTintSettings>,
+    ),
 ) {
     let Ok((mut dof, cam_xform)) = q_cam.single_mut() else {
         return;
@@ -449,6 +461,37 @@ fn dof_and_outline_panel(
                 let resp = ui.checkbox(&mut on, "Enabled");
                 if resp.changed() {
                     crt.enabled = on as u32; // 1 or 0
+                }
+            }
+
+            ui.separator();
+
+            ui.heading("Gradient Tint");
+            if let Ok(mut gt) = gradient_tint_settings.single_mut() {
+                let mut on = gt.enabled != 0;
+                let color_top_right = gt.color_top_right;
+                let color_bottom_left = gt.color_bottom_left;
+
+                ui.add(
+                    egui::Slider::new(&mut gt.strength, 0.0..=1.0)
+                        .logarithmic(false)
+                        .text("Intensity"),
+                );
+                let mut rgb = [color_top_right[0], color_top_right[1], color_top_right[2]];
+                if ui.color_edit_button_rgb(&mut rgb).changed() {
+                    gt.color_top_right = Vec4::new(rgb[0], rgb[1], rgb[2], 1.0);
+                }
+                rgb = [
+                    color_bottom_left[0],
+                    color_bottom_left[1],
+                    color_bottom_left[2],
+                ];
+                if ui.color_edit_button_rgb(&mut rgb).changed() {
+                    gt.color_bottom_left = Vec4::new(rgb[0], rgb[1], rgb[2], 1.0);
+                }
+                let resp = ui.checkbox(&mut on, "Enabled");
+                if resp.changed() {
+                    gt.enabled = on as u32; // 1 or 0
                 }
             }
         });
