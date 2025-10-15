@@ -227,6 +227,7 @@ fn inspector_window(
     q_selected: Query<Entity, With<Selected>>,
 ) {
     let Some(entity) = state.selected else { return };
+    let mut delete_requested = false;
 
     // Load current values from Transform when opening, then keep editing the cached fields.
     // Also refresh when selection changes, so new objects don't inherit stale UI values.
@@ -327,6 +328,16 @@ fn inspector_window(
             ui.small("Tip: hold Shift for finer DragValue steps");
 
             ui.separator();
+            // Danger action: delete the selected entity
+            if ui
+                .button(egui::RichText::new("Delete Selected").color(egui::Color32::RED))
+                .clicked()
+            {
+                // Flag deletion after UI closes to avoid borrowing issues
+                delete_requested = true;
+            }
+
+            ui.separator();
             ui.heading("Create New");
             ui.horizontal(|ui| {
                 ui.label("Shape:");
@@ -395,5 +406,15 @@ fn inspector_window(
         // Keep the selection, but stop forcing cache
         state.pos = Vec3::ZERO;
         state.scale = Vec3::ZERO;
+    }
+
+    // Perform deferred deletion if requested
+    if delete_requested {
+        if let Some(e) = state.selected.take() {
+            commands.entity(e).despawn();
+        }
+        state.window_open = false;
+        state.cache_initialized = false;
+        state.last_selected = None;
     }
 }
