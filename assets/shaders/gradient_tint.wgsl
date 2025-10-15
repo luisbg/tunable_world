@@ -5,8 +5,8 @@
 
 struct GradientParams {
     enabled: u32,      // 0 = off, 1 = on
+    additive: u32,     // 0 = off, 1 = on
     strength: f32,     // 0..1, blend toward tint
-    _pad0: vec2<f32>,  // alignment padding
 
     // Colors as RGBA; alpha is ignored but keeps alignment simple.
     color_top_right: vec4<f32>,
@@ -38,10 +38,18 @@ fn fragment(in: FullscreenVertexOutput) -> @location(0) vec4<f32> {
    let tint = mix(grad.color_bottom_left.rgb, grad.color_top_right.rgb, t);
 
    // --- Apply tint ---------------------------------------------------------
-   // Multiplicative tint feels like a "filter" over the scene.
-   // Blend toward (base * tint) by `strength`.
-   let tinted = base.rgb * tint;
-   let out_rgb = mix(base.rgb, tinted, saturate(grad.strength));
+   if (grad.additive == 0u ) {
+      // Multiplicative tint feels like a "filter" over the scene.
+      // Blend toward (base * tint) by `strength`.
+      let tinted = base.rgb * tint;
+      let out_rgb = mix(base.rgb, tinted, saturate(grad.strength));
 
-   return vec4<f32>(out_rgb, base.a);
+      return vec4<f32>(out_rgb, base.a);
+   } else {
+       // --- Additive tint ---------------------------------------------------
+       // Add tint and clamp to [0,1] to prevent overbright results
+       let tinted = clamp(base.rgb + tint * grad.strength, vec3<f32>(0.0), vec3<f32>(1.0));
+
+       return vec4<f32>(tinted, base.a);
+   }
 }

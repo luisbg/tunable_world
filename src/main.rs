@@ -90,8 +90,8 @@ fn spawn_camera(mut commands: Commands) {
         },
         GradientTintSettings {
             enabled: 1,
+            additive: 0,
             strength: 0.5,
-            _pad0: Vec2::ZERO,
             color_top_right: Vec4::new(0.9, 0.2, 0.3, 1.0), // pink-tint
             color_bottom_left: Vec4::new(0.2, 0.9, 0.8, 1.0), // cyan-tint
         },
@@ -469,6 +469,7 @@ fn dof_and_outline_panel(
             ui.heading("Gradient Tint");
             if let Ok(mut gt) = gradient_tint_settings.single_mut() {
                 let mut on = gt.enabled != 0;
+                let mut additive = gt.additive != 0;
                 let color_top_right = gt.color_top_right;
                 let color_bottom_left = gt.color_bottom_left;
 
@@ -489,9 +490,13 @@ fn dof_and_outline_panel(
                 if ui.color_edit_button_rgb(&mut rgb).changed() {
                     gt.color_bottom_left = Vec4::new(rgb[0], rgb[1], rgb[2], 1.0);
                 }
-                let resp = ui.checkbox(&mut on, "Enabled");
+                let mut resp = ui.checkbox(&mut on, "Enabled");
                 if resp.changed() {
                     gt.enabled = on as u32; // 1 or 0
+                }
+                resp = ui.checkbox(&mut additive, "Additive");
+                if resp.changed() {
+                    gt.additive = additive as u32; // 1 or 0
                 }
             }
         });

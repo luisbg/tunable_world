@@ -185,10 +185,9 @@ impl FromWorld for PostProcessPipeline {
 #[derive(Component, Default, Clone, Copy, ExtractComponent, ShaderType)]
 #[repr(C, align(16))]
 pub struct GradientTintSettings {
-    pub enabled: u32,  // ShaderType doesn't support bool
-    pub strength: f32, // 0..1
-    pub _pad0: Vec2,   // align to 16B
-
+    pub enabled: u32, // ShaderType doesn't support bool
+    pub additive: u32,
+    pub strength: f32,           // 0..1
     pub color_top_right: Vec4,   // RGBA
     pub color_bottom_left: Vec4, // RGBA
 }
