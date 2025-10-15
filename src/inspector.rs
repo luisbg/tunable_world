@@ -15,11 +15,15 @@ pub struct Selected;
 /// Keeps UI state and the currently selected entity.
 #[derive(Resource, Default)]
 struct InspectorState {
+    last_selected: Option<Entity>,
     selected: Option<Entity>,
     // Cached UI fields (what the user is editing)
     pos: Vec3,
     scale: Vec3,
     window_open: bool,
+    // Whether the pos/scale cache reflects the currently selected entity.
+    // When selection changes, we set this to false so the inspector reloads values.
+    cache_initialized: bool,
 }
 
 /// Plugin to wire everything up.
@@ -114,10 +118,8 @@ fn pick_on_click(
     cameras: Query<(&Camera, &GlobalTransform)>,
     mut state: ResMut<InspectorState>,
     mut commands: Commands,
-    mut q_selected: Query<Entity, With<Selected>>,
-    //    q_editables: Query<(Entity, &GlobalTransform, &Mesh3d), With<Editable>>,
+    q_selected: Query<Entity, With<Selected>>,
     q_editables: Query<(Entity, &GlobalTransform, &Aabb), With<Editable>>,
-    //    meshes: Res<Assets<Mesh>>,
     mut egui_ctxs: EguiContexts,
 ) {
     // Only act on left button press events
@@ -177,15 +179,23 @@ fn pick_on_click(
         // If this camera produced any hit, commit selection and stop checking other cameras.
         if let Some((hit_e, _t)) = best_hit {
             // Clear previous selection tag, if any
-            if let Ok(prev) = q_selected.single_mut() {
+            if let Ok(prev) = q_selected.single() {
                 commands.entity(prev).remove::<Selected>();
             }
+
             // Tag new selection
             commands.entity(hit_e).insert(Selected);
 
             // Initialize inspector state for UI
-            state.selected = Some(hit_e);
+            let newly_selected = Some(hit_e);
+            let selection_changed = state.selected != newly_selected;
+            state.selected = newly_selected;
             state.window_open = true;
+            if selection_changed {
+                state.cache_initialized = false;
+                state.last_selected = newly_selected;
+            }
+
             return;
         }
     }
@@ -200,6 +210,17 @@ fn inspector_window(
     let Some(entity) = state.selected else { return };
 
     // Load current values from Transform when opening, then keep editing the cached fields.
+    // Also refresh when selection changes, so new objects don't inherit stale UI values.
+    if let Ok(tf) = q_tf.get_mut(entity) {
+        if !state.cache_initialized || state.last_selected != Some(entity) {
+            state.pos = tf.translation;
+            state.scale = tf.scale;
+            state.cache_initialized = true;
+            state.window_open = true;
+            state.last_selected = Some(entity);
+        }
+    }
+
     if let Ok(tf) = q_tf.get_mut(entity) {
         // If the window was just opened this frame (or we don't have cache yet), sync cache
         // This keeps the cache in sync if the entity was transformed by other systems.
@@ -276,6 +297,7 @@ fn inspector_window(
     } else {
         // Window closed by user
         state.window_open = false;
+        state.cache_initialized = false;
         // Keep the selection, but stop forcing cache
         state.pos = Vec3::ZERO;
         state.scale = Vec3::ZERO;
