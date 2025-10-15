@@ -21,6 +21,7 @@ struct InspectorState {
     pos: Vec3,
     scale: Vec3,
     rot_deg: Vec3,
+    color_srgba: egui::Color32,
     window_open: bool,
     // Whether the pos/scale cache reflects the currently selected entity.
     // When selection changes, we set this to false so the inspector reloads values.
@@ -221,6 +222,7 @@ fn inspector_window(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    q_mat: Query<&MeshMaterial3d<StandardMaterial>>,
     mut state: ResMut<InspectorState>,
     mut egui_ctxs: EguiContexts,
     mut q_tf: Query<&mut Transform>,
@@ -237,6 +239,18 @@ fn inspector_window(
             state.scale = tf.scale;
             let (rx, ry, rz) = tf.rotation.to_euler(EulerRot::XYZ);
             state.rot_deg = Vec3::new(rx.to_degrees(), ry.to_degrees(), rz.to_degrees());
+            // Sync color from material
+            if let Ok(h) = q_mat.get(entity) {
+                if let Some(mat) = materials.get(&h.0) {
+                    let s = mat.base_color.to_srgba();
+                    state.color_srgba = egui::Color32::from_rgba_premultiplied(
+                        (s.red * 255.0).clamp(0.0, 255.0) as u8,
+                        (s.green * 255.0).clamp(0.0, 255.0) as u8,
+                        (s.blue * 255.0).clamp(0.0, 255.0) as u8,
+                        (s.alpha * 255.0).clamp(0.0, 255.0) as u8,
+                    );
+                }
+            }
             state.cache_initialized = true;
             state.window_open = true;
             state.last_selected = Some(entity);
@@ -310,6 +324,47 @@ fn inspector_window(
                         .range(0.001..=1000.0),
                 );
             });
+
+            ui.separator();
+            ui.heading("Color");
+            {
+                use egui::color_picker::Alpha;
+                let mut c = state.color_srgba;
+                egui::color_picker::color_edit_button_srgba(ui, &mut c, Alpha::Opaque);
+                if c != state.color_srgba {
+                    state.color_srgba = c;
+                    // Apply immediately to material (if available)
+                    if let Some(e) = state.selected {
+                        if let Ok(h) = q_mat.get(e) {
+                            if let Some(mat) = materials.get_mut(h) {
+                                let (r, g, b, a) = (
+                                    c.r() as f32 / 255.0,
+                                    c.g() as f32 / 255.0,
+                                    c.b() as f32 / 255.0,
+                                    c.a() as f32 / 255.0,
+                                );
+                                mat.base_color = Color::srgba(r, g, b, a);
+                            }
+                        }
+                    }
+                }
+                if ui.button("Reset Color").clicked() {
+                    state.color_srgba = egui::Color32::from_rgba_premultiplied(209, 209, 219, 255);
+                    if let Some(e) = state.selected {
+                        if let Ok(h) = q_mat.get(e) {
+                            if let Some(mat) = materials.get_mut(h) {
+                                let (r, g, b, a) = (
+                                    state.color_srgba.r() as f32 / 255.0,
+                                    state.color_srgba.g() as f32 / 255.0,
+                                    state.color_srgba.b() as f32 / 255.0,
+                                    state.color_srgba.a() as f32 / 255.0,
+                                );
+                                mat.base_color = Color::srgba(r, g, b, a);
+                            }
+                        }
+                    }
+                }
+            }
 
             ui.separator();
             ui.horizontal(|ui| {
@@ -398,6 +453,19 @@ fn inspector_window(
                 state.rot_deg.z.to_radians(),
             );
             tf.rotation = Quat::from_euler(EulerRot::XYZ, rx, ry, rz);
+        }
+        // Keep material color in sync with UI
+        if let Ok(h) = q_mat.get(entity) {
+            if let Some(mat) = materials.get_mut(h) {
+                let c = state.color_srgba;
+                let (r, g, b, a) = (
+                    c.r() as f32 / 255.0,
+                    c.g() as f32 / 255.0,
+                    c.b() as f32 / 255.0,
+                    c.a() as f32 / 255.0,
+                );
+                mat.base_color = Color::srgba(r, g, b, a);
+            }
         }
     } else {
         // Window closed by user
