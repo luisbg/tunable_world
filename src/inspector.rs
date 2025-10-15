@@ -20,6 +20,7 @@ struct InspectorState {
     // Cached UI fields (what the user is editing)
     pos: Vec3,
     scale: Vec3,
+    rot_deg: Vec3,
     window_open: bool,
     // Whether the pos/scale cache reflects the currently selected entity.
     // When selection changes, we set this to false so the inspector reloads values.
@@ -233,6 +234,8 @@ fn inspector_window(
         if !state.cache_initialized || state.last_selected != Some(entity) {
             state.pos = tf.translation;
             state.scale = tf.scale;
+            let (rx, ry, rz) = tf.rotation.to_euler(EulerRot::XYZ);
+            state.rot_deg = Vec3::new(rx.to_degrees(), ry.to_degrees(), rz.to_degrees());
             state.cache_initialized = true;
             state.window_open = true;
             state.last_selected = Some(entity);
@@ -245,6 +248,9 @@ fn inspector_window(
         if !state.window_open {
             state.pos = tf.translation;
             state.scale = tf.scale;
+            // Convert current rotation to Euler XYZ (degrees) for UI
+            let (rx, ry, rz) = tf.rotation.to_euler(EulerRot::XYZ);
+            state.rot_deg = Vec3::new(rx.to_degrees(), ry.to_degrees(), rz.to_degrees());
             state.window_open = true;
         } else if state.pos == Vec3::ZERO && state.scale == Vec3::ZERO {
             state.pos = tf.translation;
@@ -270,6 +276,16 @@ fn inspector_window(
                 ui.add(egui::DragValue::new(&mut state.pos.y).speed(0.05));
                 ui.label("z");
                 ui.add(egui::DragValue::new(&mut state.pos.z).speed(0.05));
+            });
+
+            ui.heading("Rotation (deg)");
+            ui.horizontal(|ui| {
+                ui.label("x");
+                ui.add(egui::DragValue::new(&mut state.rot_deg.x).speed(0.5));
+                ui.label("y");
+                ui.add(egui::DragValue::new(&mut state.rot_deg.y).speed(0.5));
+                ui.label("z");
+                ui.add(egui::DragValue::new(&mut state.rot_deg.z).speed(0.5));
             });
 
             ui.heading("Scale");
@@ -302,6 +318,11 @@ fn inspector_window(
                 if ui.button("Reset Scale (1,1,1)").clicked() {
                     state.scale = Vec3::ONE;
                 }
+                ui.horizontal(|ui| {
+                    if ui.button("Reset Rotation (0,0,0)").clicked() {
+                        state.rot_deg = Vec3::ZERO;
+                    }
+                });
             });
             ui.small("Tip: hold Shift for finer DragValue steps");
 
@@ -360,6 +381,12 @@ fn inspector_window(
         if let Ok(mut tf) = q_tf.get_mut(entity) {
             tf.translation = state.pos;
             tf.scale = state.scale;
+            let (rx, ry, rz) = (
+                state.rot_deg.x.to_radians(),
+                state.rot_deg.y.to_radians(),
+                state.rot_deg.z.to_radians(),
+            );
+            tf.rotation = Quat::from_euler(EulerRot::XYZ, rx, ry, rz);
         }
     } else {
         // Window closed by user
