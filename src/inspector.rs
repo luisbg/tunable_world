@@ -3,6 +3,8 @@ use bevy::math::Vec3A;
 use bevy::prelude::*;
 use bevy::render::primitives::Aabb;
 use bevy_egui::{EguiContexts, EguiPrimaryContextPass, egui};
+use serde::{Deserialize, Serialize};
+use std::fs::{read_to_string, write};
 
 /// Tag any entity you want to be clickable/editable.
 #[derive(Component)]
@@ -11,6 +13,14 @@ pub struct Editable;
 /// Tag the currently selected entity (helps for highlighting, if you want).
 #[derive(Component)]
 pub struct Selected;
+
+/// Persisted mesh info so we can save/load scenes.
+#[derive(Component, Clone, Copy, Serialize, Deserialize)]
+pub struct EditableMesh {
+    pub kind: SpawnKind,
+    /// For Cuboid: size (edge length). For Sphere: radius.
+    pub param: f32,
+}
 
 /// Keeps UI state and the currently selected entity.
 #[derive(Resource, Default)]
@@ -32,8 +42,8 @@ struct InspectorState {
     spawn_kind: SpawnKind,
 }
 
-#[derive(Copy, Clone, Eq, PartialEq)]
-enum SpawnKind {
+#[derive(Copy, Clone, Eq, PartialEq, Serialize, Deserialize)]
+pub enum SpawnKind {
     Cuboid,
     Sphere,
     Plane,
@@ -44,12 +54,57 @@ impl Default for SpawnKind {
     }
 }
 
+// ========== Scene JSON format ==========
+#[derive(Serialize, Deserialize)]
+struct SceneDoc {
+    version: u32,
+    objects: Vec<SceneObject>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct SceneObject {
+    name: Option<String>,
+    position: [f32; 3],
+    rotation_euler_deg: [f32; 3],
+    scale: [f32; 3],
+    mesh: MeshSpec,
+    color_rgba: [f32; 4],
+    metallic: f32,
+    roughness: f32,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(tag = "type")]
+enum MeshSpec {
+    Cuboid { size: [f32; 3] },
+    Sphere { radius: f32 },
+    Plane { size: [f32; 2] },
+}
+
+#[derive(Resource, Default)]
+struct SceneIoState {
+    filename: String,
+    _status: Option<String>,
+}
+
+#[derive(Event)]
+struct SaveSceneEvent;
+
+#[derive(Event)]
+struct LoadSceneEvent;
+
 /// Plugin to wire everything up.
 pub struct InspectorPlugin;
 impl Plugin for InspectorPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<InspectorState>()
-            .add_systems(Update, pick_on_click)
+            .init_resource::<SceneIoState>()
+            .add_event::<SaveSceneEvent>()
+            .add_event::<LoadSceneEvent>()
+            .add_systems(
+                Update,
+                (pick_on_click, save_scene_system, load_scene_system),
+            )
             .add_systems(EguiPrimaryContextPass, inspector_window);
     }
 }
@@ -229,6 +284,10 @@ fn inspector_window(
     mut egui_ctxs: EguiContexts,
     mut q_tf: Query<&mut Transform>,
     q_selected: Query<Entity, With<Selected>>,
+    // Scene I/O resources and events
+    mut io: ResMut<SceneIoState>,
+    mut ev_save: EventWriter<SaveSceneEvent>,
+    mut ev_load: EventWriter<LoadSceneEvent>,
 ) {
     let Some(entity) = state.selected else { return };
     let mut delete_requested = false;
@@ -410,6 +469,28 @@ fn inspector_window(
                     }
                 });
             });
+
+            ui.separator();
+            ui.heading("Scene I/O");
+            ui.horizontal(|ui| {
+                ui.label("File:");
+                let hint = if io.filename.is_empty() {
+                    "scene.json"
+                } else {
+                    ""
+                };
+                let te = egui::TextEdit::singleline(&mut io.filename)
+                    .hint_text(hint)
+                    .desired_width(200.0);
+                ui.add(te);
+                if ui.button("Save").clicked() {
+                    ev_save.write(SaveSceneEvent);
+                }
+                if ui.button("Load").clicked() {
+                    ev_load.write(LoadSceneEvent);
+                }
+            });
+
             ui.small("Tip: hold Shift for finer DragValue steps");
 
             ui.separator();
@@ -455,6 +536,10 @@ fn inspector_window(
                         MeshMaterial3d(mat),
                         Transform::from_translation(Vec3::ZERO).with_scale(Vec3::ONE),
                         Editable,
+                        EditableMesh {
+                            kind: state.spawn_kind,
+                            param: 1.0,
+                        },
                         Selected,
                         Name::new(match state.spawn_kind {
                             SpawnKind::Cuboid => "Cuboid",
@@ -516,5 +601,209 @@ fn inspector_window(
         state.window_open = false;
         state.cache_initialized = false;
         state.last_selected = None;
+    }
+}
+
+fn save_scene_system(
+    mut ev: EventReader<SaveSceneEvent>,
+    io: Res<SceneIoState>,
+    q_edit: Query<
+        (
+            Option<&Name>,
+            &Transform,
+            &Mesh3d,
+            &MeshMaterial3d<StandardMaterial>,
+            Option<&EditableMesh>,
+        ),
+        With<Editable>,
+    >,
+    materials: Res<Assets<StandardMaterial>>,
+) {
+    if ev.is_empty() {
+        return;
+    }
+    for _ in ev.read() {
+        let mut objects = Vec::new();
+        for (name, tf, _mesh, mat_h, mesh_info) in q_edit.iter() {
+            let (rx, ry, rz) = tf.rotation.to_euler(EulerRot::XYZ);
+            // Mesh spec
+            let mesh = if let Some(mi) = mesh_info {
+                match mi.kind {
+                    SpawnKind::Cuboid => {
+                        let s = tf.scale;
+                        let base = mi.param.max(0.0001);
+                        MeshSpec::Cuboid {
+                            size: [base * s.x, base * s.y, base * s.z],
+                        }
+                    }
+                    SpawnKind::Sphere => MeshSpec::Sphere {
+                        radius: mi.param.max(0.0001),
+                    },
+                    SpawnKind::Plane => {
+                        let s = tf.scale;
+                        let base = mi.param.max(0.0001);
+                        MeshSpec::Plane {
+                            size: [base * s.x, base * s.y],
+                        }
+                    }
+                }
+            } else {
+                // If missing metadata, assume a unit cube (Transform.scale still restores size)
+                MeshSpec::Cuboid {
+                    size: [1.0, 1.0, 1.0],
+                }
+            };
+
+            // TODO: store the emmisive (used in crystal material in main.rs)
+            let (color_rgba, metallic, roughness) = if let Some(mat) = materials.get(&mat_h.0) {
+                let s = mat.base_color.to_srgba();
+                (
+                    [s.red, s.green, s.blue, s.alpha],
+                    mat.metallic,
+                    mat.perceptual_roughness,
+                )
+            } else {
+                ([0.82, 0.82, 0.86, 1.0], 0.0, 0.6)
+            };
+
+            objects.push(SceneObject {
+                name: name.map(|n| n.as_str().to_string()),
+                position: [tf.translation.x, tf.translation.y, tf.translation.z],
+                rotation_euler_deg: [rx.to_degrees(), ry.to_degrees(), rz.to_degrees()],
+                scale: [tf.scale.x, tf.scale.y, tf.scale.z],
+                mesh,
+                color_rgba,
+                metallic,
+                roughness,
+            });
+        }
+        let doc = SceneDoc {
+            version: 1,
+            objects,
+        };
+        let path = if io.filename.trim().is_empty() {
+            "scene.json".into()
+        } else {
+            io.filename.clone()
+        };
+        match serde_json::to_string_pretty(&doc) {
+            Ok(json) => {
+                if let Err(e) = write(&path, json) {
+                    eprintln!("Save error: {e}");
+                } else {
+                    eprintln!("Scene saved to {path}");
+                }
+            }
+            Err(e) => eprintln!("Serialize error: {e}"),
+        }
+    }
+}
+
+fn load_scene_system(
+    mut ev: EventReader<LoadSceneEvent>,
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    io: Res<SceneIoState>,
+    q_existing: Query<Entity, With<Editable>>,
+) {
+    if ev.is_empty() {
+        return;
+    }
+    for _ in ev.read() {
+        let path = if io.filename.trim().is_empty() {
+            "scene.json".into()
+        } else {
+            io.filename.clone()
+        };
+        let Ok(text) = read_to_string(&path) else {
+            eprintln!("Load error: cannot read {path}");
+            continue;
+        };
+        let Ok(doc) = serde_json::from_str::<SceneDoc>(&text) else {
+            eprintln!("Load error: invalid JSON");
+            continue;
+        };
+
+        for e in q_existing.iter() {
+            commands.entity(e).despawn();
+        }
+
+        for obj in doc.objects {
+            // Mesh: support Cube, Cuboid, Plane, Sphere
+            let (mesh_h, mesh_info) = match obj.mesh {
+                MeshSpec::Cuboid { size } => {
+                    // Create unit cube; axis sizes will be applied via Transform.scale (below)
+                    let base = 1.0_f32;
+                    let mh = meshes.add(Mesh::from(Cuboid::new(base, base, base)));
+                    // Store param as the X size for UI defaults; scale holds true XYZ
+                    (
+                        mh,
+                        EditableMesh {
+                            kind: SpawnKind::Cuboid,
+                            param: size[0].max(0.0001),
+                        },
+                    )
+                }
+                MeshSpec::Plane { size } => {
+                    // Bevy's Plane is 1x1; Transform.scale will map it to size X/Y
+                    let mh = meshes.add(Mesh::from(Plane3d {
+                        normal: Dir3::Y,
+                        half_size: Vec2::new(0.5, 0.5), // unit plane
+                    }));
+                    (
+                        mh,
+                        EditableMesh {
+                            kind: SpawnKind::Cuboid,
+                            param: size[0].max(0.0001),
+                        },
+                    )
+                }
+                MeshSpec::Sphere { radius } => (
+                    meshes.add(Mesh::from(Sphere::new(radius))),
+                    EditableMesh {
+                        kind: SpawnKind::Sphere,
+                        param: radius,
+                    },
+                ),
+            };
+
+            // Material: color + PBR params; enable blending if alpha < 1
+            let c = obj.color_rgba;
+            let mut mat = StandardMaterial {
+                base_color: Color::srgba(c[0], c[1], c[2], c[3]),
+                perceptual_roughness: obj.roughness.clamp(0.0, 1.0),
+                metallic: obj.metallic.clamp(0.0, 1.0),
+                ..Default::default()
+            };
+            if c[3] < 0.999 {
+                mat.alpha_mode = AlphaMode::Blend;
+                // Optional: tweak depth bias/ordering for semi-transparent if needed
+            }
+            let mat_h = materials.add(mat);
+
+            // Transform: translation, rotation (deg->rad), **scale** (restores X/Y/Z sizes)
+            let (rx, ry, rz) = (
+                obj.rotation_euler_deg[0].to_radians(),
+                obj.rotation_euler_deg[1].to_radians(),
+                obj.rotation_euler_deg[2].to_radians(),
+            );
+            let tf = Transform {
+                translation: Vec3::from_array(obj.position),
+                rotation: Quat::from_euler(EulerRot::XYZ, rx, ry, rz),
+                scale: Vec3::from_array(obj.scale),
+            };
+
+            let mut ecmd = commands.spawn((
+                Mesh3d(mesh_h),
+                MeshMaterial3d(mat_h),
+                tf,
+                Editable,
+                mesh_info,
+            ));
+            if let Some(name) = obj.name {
+                ecmd.insert(Name::new(name));
+            }
+        }
     }
 }

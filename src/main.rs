@@ -14,7 +14,7 @@ use bevy_egui::{EguiContexts, EguiPlugin, EguiPrimaryContextPass, egui};
 mod inspector;
 mod post;
 
-use crate::inspector::{Editable, InspectorPlugin};
+use crate::inspector::{Editable, EditableMesh, InspectorPlugin, SpawnKind};
 use crate::post::chroma_aberration::{ChromaAberrationPlugin, ChromaAberrationSettings};
 use crate::post::crt::{CRTPlugin, CRTSettings};
 use crate::post::gradient_tint::{GradientTintPlugin, GradientTintSettings};
@@ -187,6 +187,10 @@ fn spawn_scene(
         Transform::from_scale(Vec3::splat(30.0)), // large base
         Editable,
         Name::new("BaseGround"),
+        EditableMesh {
+            kind: SpawnKind::Plane,
+            param: 1.0,
+        },
     ));
 
     // --- Terraces: a few chunky steps at different heights
@@ -199,6 +203,8 @@ fn spawn_scene(
         outline_material.clone(),
         0.03,
         "TerraceLow",
+        SpawnKind::Cuboid,
+        Vec3::new(0.0, 0.0, 0.0),
     );
 
     // Mid terrace
@@ -210,6 +216,8 @@ fn spawn_scene(
         outline_material.clone(),
         0.03,
         "TerraceMid",
+        SpawnKind::Cuboid,
+        Vec3::new(0.0, 0.0, 0.0),
     );
 
     // Tall terrace (stacked)
@@ -221,6 +229,8 @@ fn spawn_scene(
         outline_material.clone(),
         0.03,
         "TerraceHighBase",
+        SpawnKind::Cuboid,
+        Vec3::new(0.0, 0.0, 0.0),
     );
     // Cap (outlined)
     commands.entity(high).with_children(|c| {
@@ -254,6 +264,8 @@ fn spawn_scene(
             outline_material.clone(),
             0.03,
             &format!("Stone{i}"),
+            SpawnKind::Cuboid,
+            Vec3::new(0.0, 0.0, 0.0),
         );
     }
 
@@ -266,6 +278,8 @@ fn spawn_scene(
         outline_material.clone(),
         0.03,
         "Crystal",
+        SpawnKind::Sphere,
+        Vec3::new(0.22, 0.0, 0.0),
     );
 
     // --- A thin “water” slab (very light roughness so the sun sparkles a bit)
@@ -285,6 +299,10 @@ fn spawn_scene(
         // water usually shouldn’t cast shadows in this simple setup
         NotShadowCaster,
         Editable,
+        EditableMesh {
+            kind: SpawnKind::Cuboid,
+            param: 1.0,
+        },
         Name::new("Water"),
     ));
 }

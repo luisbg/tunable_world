@@ -1,7 +1,7 @@
 use bevy::pbr::NotShadowCaster;
 use bevy::prelude::*;
 
-use crate::inspector::Editable;
+use crate::inspector::{Editable, EditableMesh, SpawnKind};
 
 /// Tag on the outline child entity so we can update it en masse.
 #[derive(Component)]
@@ -25,13 +25,21 @@ pub fn spawn_outlined(
     outline_mat: Handle<StandardMaterial>,
     width: f32,
     name: &str,
+    kind: SpawnKind,
+    size: Vec3,
 ) -> Entity {
+    let mut param = 1.0;
+    if kind == SpawnKind::Sphere {
+        param = size[0]
+    }
+
     let parent = commands
         .spawn((
             Mesh3d(mesh.clone()),
             MeshMaterial3d(material.clone()),
             transform,
             Editable,
+            EditableMesh { kind, param },
             Name::new(name.to_string()),
         ))
         .id();
