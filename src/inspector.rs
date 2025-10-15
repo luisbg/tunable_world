@@ -22,6 +22,8 @@ struct InspectorState {
     scale: Vec3,
     rot_deg: Vec3,
     color_srgba: egui::Color32,
+    metallic: f32,
+    roughness: f32,
     window_open: bool,
     // Whether the pos/scale cache reflects the currently selected entity.
     // When selection changes, we set this to false so the inspector reloads values.
@@ -249,6 +251,9 @@ fn inspector_window(
                         (s.blue * 255.0).clamp(0.0, 255.0) as u8,
                         (s.alpha * 255.0).clamp(0.0, 255.0) as u8,
                     );
+                    // Also sync metallic / roughness
+                    state.metallic = mat.metallic;
+                    state.roughness = mat.perceptual_roughness;
                 }
             }
             state.cache_initialized = true;
@@ -326,45 +331,70 @@ fn inspector_window(
             });
 
             ui.separator();
-            ui.heading("Color");
-            {
-                use egui::color_picker::Alpha;
-                let mut c = state.color_srgba;
-                egui::color_picker::color_edit_button_srgba(ui, &mut c, Alpha::Opaque);
-                if c != state.color_srgba {
-                    state.color_srgba = c;
-                    // Apply immediately to material (if available)
-                    if let Some(e) = state.selected {
-                        if let Ok(h) = q_mat.get(e) {
-                            if let Some(mat) = materials.get_mut(h) {
-                                let (r, g, b, a) = (
-                                    c.r() as f32 / 255.0,
-                                    c.g() as f32 / 255.0,
-                                    c.b() as f32 / 255.0,
-                                    c.a() as f32 / 255.0,
-                                );
-                                mat.base_color = Color::srgba(r, g, b, a);
+            ui.horizontal(|ui| {
+                ui.vertical(|ui| {
+                    ui.heading("Color");
+                    {
+                        use egui::color_picker::Alpha;
+                        let mut c = state.color_srgba;
+                        egui::color_picker::color_edit_button_srgba(ui, &mut c, Alpha::Opaque);
+                        if c != state.color_srgba {
+                            state.color_srgba = c;
+                            // Apply immediately to material (if available)
+                            if let Some(e) = state.selected {
+                                if let Ok(h) = q_mat.get(e) {
+                                    if let Some(mat) = materials.get_mut(h) {
+                                        let (r, g, b, a) = (
+                                            c.r() as f32 / 255.0,
+                                            c.g() as f32 / 255.0,
+                                            c.b() as f32 / 255.0,
+                                            c.a() as f32 / 255.0,
+                                        );
+                                        mat.base_color = Color::srgba(r, g, b, a);
+                                    }
+                                }
+                            }
+                        }
+
+                        if ui.button("Reset Color").clicked() {
+                            state.color_srgba =
+                                egui::Color32::from_rgba_premultiplied(209, 209, 219, 255);
+                            if let Some(e) = state.selected {
+                                if let Ok(h) = q_mat.get(e) {
+                                    if let Some(mat) = materials.get_mut(h) {
+                                        let (r, g, b, a) = (
+                                            state.color_srgba.r() as f32 / 255.0,
+                                            state.color_srgba.g() as f32 / 255.0,
+                                            state.color_srgba.b() as f32 / 255.0,
+                                            state.color_srgba.a() as f32 / 255.0,
+                                        );
+                                        mat.base_color = Color::srgba(r, g, b, a);
+                                    }
+                                }
                             }
                         }
                     }
-                }
-                if ui.button("Reset Color").clicked() {
-                    state.color_srgba = egui::Color32::from_rgba_premultiplied(209, 209, 219, 255);
-                    if let Some(e) = state.selected {
-                        if let Ok(h) = q_mat.get(e) {
-                            if let Some(mat) = materials.get_mut(h) {
-                                let (r, g, b, a) = (
-                                    state.color_srgba.r() as f32 / 255.0,
-                                    state.color_srgba.g() as f32 / 255.0,
-                                    state.color_srgba.b() as f32 / 255.0,
-                                    state.color_srgba.a() as f32 / 255.0,
-                                );
-                                mat.base_color = Color::srgba(r, g, b, a);
-                            }
+                });
+
+                ui.vertical(|ui| {
+                    ui.heading("Material");
+                    ui.label("Metallic");
+                    let _ =
+                        ui.add(egui::Slider::new(&mut state.metallic, 0.0..=1.0).fixed_decimals(3));
+                    ui.label("Roughness");
+                    let _ = ui
+                        .add(egui::Slider::new(&mut state.roughness, 0.0..=1.0).fixed_decimals(3));
+                });
+                // Apply material changes immediately
+                if let Some(e) = state.selected {
+                    if let Ok(h) = q_mat.get(e) {
+                        if let Some(mat) = materials.get_mut(&h.0) {
+                            mat.metallic = state.metallic.clamp(0.0, 1.0);
+                            mat.perceptual_roughness = state.roughness.clamp(0.0, 1.0);
                         }
                     }
                 }
-            }
+            });
 
             ui.separator();
             ui.horizontal(|ui| {
@@ -454,7 +484,7 @@ fn inspector_window(
             );
             tf.rotation = Quat::from_euler(EulerRot::XYZ, rx, ry, rz);
         }
-        // Keep material color in sync with UI
+        // Keep material in sync with UI (color + metal/rough)
         if let Ok(h) = q_mat.get(entity) {
             if let Some(mat) = materials.get_mut(h) {
                 let c = state.color_srgba;
@@ -465,6 +495,8 @@ fn inspector_window(
                     c.a() as f32 / 255.0,
                 );
                 mat.base_color = Color::srgba(r, g, b, a);
+                mat.metallic = state.metallic.clamp(0.0, 1.0);
+                mat.perceptual_roughness = state.roughness.clamp(0.0, 1.0);
             }
         }
     } else {
