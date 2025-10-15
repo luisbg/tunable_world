@@ -24,6 +24,20 @@ struct InspectorState {
     // Whether the pos/scale cache reflects the currently selected entity.
     // When selection changes, we set this to false so the inspector reloads values.
     cache_initialized: bool,
+    // Choice for object creation
+    spawn_kind: SpawnKind,
+}
+
+#[derive(Copy, Clone, Eq, PartialEq)]
+enum SpawnKind {
+    Cuboid,
+    Sphere,
+    Plane,
+}
+impl Default for SpawnKind {
+    fn default() -> Self {
+        SpawnKind::Cuboid
+    }
 }
 
 /// Plugin to wire everything up.
@@ -203,9 +217,13 @@ fn pick_on_click(
 
 /// egui window that shows when an entity is selected. Edits translation & scale live.
 fn inspector_window(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
     mut state: ResMut<InspectorState>,
     mut egui_ctxs: EguiContexts,
     mut q_tf: Query<&mut Transform>,
+    q_selected: Query<Entity, With<Selected>>,
 ) {
     let Some(entity) = state.selected else { return };
 
@@ -286,6 +304,55 @@ fn inspector_window(
                 }
             });
             ui.small("Tip: hold Shift for finer DragValue steps");
+
+            ui.separator();
+            ui.heading("Create New");
+            ui.horizontal(|ui| {
+                ui.label("Shape:");
+                ui.selectable_value(&mut state.spawn_kind, SpawnKind::Cuboid, "Cuboid");
+                ui.selectable_value(&mut state.spawn_kind, SpawnKind::Sphere, "Sphere");
+                ui.selectable_value(&mut state.spawn_kind, SpawnKind::Plane, "Plane");
+            });
+            if ui.button("Add object at (0,0,0)").clicked() {
+                // Remove previous Selected tag (single-select)
+                if let Ok(prev) = q_selected.single() {
+                    commands.entity(prev).remove::<Selected>();
+                }
+                // Build mesh
+                let mesh_handle = match state.spawn_kind {
+                    SpawnKind::Cuboid => meshes.add(Mesh::from(Cuboid::new(1.0, 1.0, 1.0))),
+                    SpawnKind::Sphere => meshes.add(Mesh::from(Sphere::new(0.5))),
+                    SpawnKind::Plane => meshes.add(Mesh::from(Plane3d::default())),
+                };
+                // Simple default material
+                let mat = materials.add(StandardMaterial {
+                    base_color: Color::srgb(0.82, 0.82, 0.86),
+                    perceptual_roughness: 0.6,
+                    metallic: 0.0,
+                    ..Default::default()
+                });
+                // Spawn at origin with unit scale; tag as Editable and Selected
+                let e = commands
+                    .spawn((
+                        Mesh3d(mesh_handle),
+                        MeshMaterial3d(mat),
+                        Transform::from_translation(Vec3::ZERO).with_scale(Vec3::ONE),
+                        Editable,
+                        Selected,
+                        Name::new(match state.spawn_kind {
+                            SpawnKind::Cuboid => "Cuboid",
+                            SpawnKind::Sphere => "Sphere",
+                            SpawnKind::Plane => "Plane",
+                        }),
+                    ))
+                    .id();
+                // Focus the new entity in the inspector
+                let newly_selected = Some(e);
+                state.selected = newly_selected;
+                state.window_open = true;
+                state.cache_initialized = false; // force reload pos/scale from Transform on next frame
+                state.last_selected = newly_selected;
+            }
         });
 
     // Apply changes live while open
