@@ -26,20 +26,14 @@ pub fn spawn_outlined(
     width: f32,
     name: &str,
     kind: SpawnKind,
-    size: Vec3,
 ) -> Entity {
-    let mut param = 1.0;
-    if kind == SpawnKind::Sphere {
-        param = size[0]
-    }
-
     let parent = commands
         .spawn((
             Mesh3d(mesh.clone()),
             MeshMaterial3d(material.clone()),
             transform,
             Editable,
-            EditableMesh { kind, param },
+            EditableMesh { kind },
             Name::new(name.to_string()),
         ))
         .id();

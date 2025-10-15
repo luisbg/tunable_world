@@ -18,8 +18,6 @@ pub struct Selected;
 #[derive(Component, Clone, Copy, Serialize, Deserialize)]
 pub struct EditableMesh {
     pub kind: SpawnKind,
-    /// For Cuboid: size (edge length). For Sphere: radius.
-    pub param: f32,
 }
 
 /// Keeps UI state and the currently selected entity.
@@ -64,21 +62,13 @@ struct SceneDoc {
 #[derive(Serialize, Deserialize)]
 struct SceneObject {
     name: Option<String>,
+    kind: SpawnKind,
     position: [f32; 3],
     rotation_euler_deg: [f32; 3],
     scale: [f32; 3],
-    mesh: MeshSpec,
     color_rgba: [f32; 4],
     metallic: f32,
     roughness: f32,
-}
-
-#[derive(Serialize, Deserialize)]
-#[serde(tag = "type")]
-enum MeshSpec {
-    Cuboid { size: [f32; 3] },
-    Sphere { radius: f32 },
-    Plane { size: [f32; 2] },
 }
 
 #[derive(Resource, Default)]
@@ -538,7 +528,6 @@ fn inspector_window(
                         Editable,
                         EditableMesh {
                             kind: state.spawn_kind,
-                            param: 1.0,
                         },
                         Selected,
                         Name::new(match state.spawn_kind {
@@ -626,33 +615,6 @@ fn save_scene_system(
         let mut objects = Vec::new();
         for (name, tf, _mesh, mat_h, mesh_info) in q_edit.iter() {
             let (rx, ry, rz) = tf.rotation.to_euler(EulerRot::XYZ);
-            // Mesh spec
-            let mesh = if let Some(mi) = mesh_info {
-                match mi.kind {
-                    SpawnKind::Cuboid => {
-                        let s = tf.scale;
-                        let base = mi.param.max(0.0001);
-                        MeshSpec::Cuboid {
-                            size: [base * s.x, base * s.y, base * s.z],
-                        }
-                    }
-                    SpawnKind::Sphere => MeshSpec::Sphere {
-                        radius: mi.param.max(0.0001),
-                    },
-                    SpawnKind::Plane => {
-                        let s = tf.scale;
-                        let base = mi.param.max(0.0001);
-                        MeshSpec::Plane {
-                            size: [base * s.x, base * s.y],
-                        }
-                    }
-                }
-            } else {
-                // If missing metadata, assume a unit cube (Transform.scale still restores size)
-                MeshSpec::Cuboid {
-                    size: [1.0, 1.0, 1.0],
-                }
-            };
 
             // TODO: store the emmisive (used in crystal material in main.rs)
             let (color_rgba, metallic, roughness) = if let Some(mat) = materials.get(&mat_h.0) {
@@ -668,10 +630,10 @@ fn save_scene_system(
 
             objects.push(SceneObject {
                 name: name.map(|n| n.as_str().to_string()),
+                kind: mesh_info.unwrap().kind,
                 position: [tf.translation.x, tf.translation.y, tf.translation.z],
                 rotation_euler_deg: [rx.to_degrees(), ry.to_degrees(), rz.to_degrees()],
                 scale: [tf.scale.x, tf.scale.y, tf.scale.z],
-                mesh,
                 color_rgba,
                 metallic,
                 roughness,
@@ -731,39 +693,23 @@ fn load_scene_system(
 
         for obj in doc.objects {
             // Mesh: support Cube, Cuboid, Plane, Sphere
-            let (mesh_h, mesh_info) = match obj.mesh {
-                MeshSpec::Cuboid { size } => {
-                    // Create unit cube; axis sizes will be applied via Transform.scale (below)
-                    let base = 1.0_f32;
-                    let mh = meshes.add(Mesh::from(Cuboid::new(base, base, base)));
-                    // Store param as the X size for UI defaults; scale holds true XYZ
-                    (
-                        mh,
-                        EditableMesh {
-                            kind: SpawnKind::Cuboid,
-                            param: size[0].max(0.0001),
-                        },
-                    )
-                }
-                MeshSpec::Plane { size } => {
-                    // Bevy's Plane is 1x1; Transform.scale will map it to size X/Y
-                    let mh = meshes.add(Mesh::from(Plane3d {
-                        normal: Dir3::Y,
-                        half_size: Vec2::new(0.5, 0.5), // unit plane
-                    }));
-                    (
-                        mh,
-                        EditableMesh {
-                            kind: SpawnKind::Cuboid,
-                            param: size[0].max(0.0001),
-                        },
-                    )
-                }
-                MeshSpec::Sphere { radius } => (
-                    meshes.add(Mesh::from(Sphere::new(radius))),
+            let (mesh_h, mesh_info) = match obj.kind {
+                SpawnKind::Cuboid => (
+                    meshes.add(Mesh::from(Cuboid::new(1.0, 1.0, 1.0))),
+                    EditableMesh {
+                        kind: SpawnKind::Cuboid,
+                    },
+                ),
+                SpawnKind::Plane => (
+                    meshes.add(Mesh::from(Plane3d::default())),
+                    EditableMesh {
+                        kind: SpawnKind::Plane,
+                    },
+                ),
+                SpawnKind::Sphere => (
+                    meshes.add(Mesh::from(Sphere::new(0.5))),
                     EditableMesh {
                         kind: SpawnKind::Sphere,
-                        param: radius,
                     },
                 ),
             };

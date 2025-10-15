@@ -189,7 +189,6 @@ fn spawn_scene(
         Name::new("BaseGround"),
         EditableMesh {
             kind: SpawnKind::Plane,
-            param: 1.0,
         },
     ));
 
@@ -204,7 +203,6 @@ fn spawn_scene(
         0.03,
         "TerraceLow",
         SpawnKind::Cuboid,
-        Vec3::new(0.0, 0.0, 0.0),
     );
 
     // Mid terrace
@@ -217,7 +215,6 @@ fn spawn_scene(
         0.03,
         "TerraceMid",
         SpawnKind::Cuboid,
-        Vec3::new(0.0, 0.0, 0.0),
     );
 
     // Tall terrace (stacked)
@@ -230,7 +227,6 @@ fn spawn_scene(
         0.03,
         "TerraceHighBase",
         SpawnKind::Cuboid,
-        Vec3::new(0.0, 0.0, 0.0),
     );
     // Cap (outlined)
     commands.entity(high).with_children(|c| {
@@ -265,7 +261,6 @@ fn spawn_scene(
             0.03,
             &format!("Stone{i}"),
             SpawnKind::Cuboid,
-            Vec3::new(0.0, 0.0, 0.0),
         );
     }
 
@@ -279,7 +274,6 @@ fn spawn_scene(
         0.03,
         "Crystal",
         SpawnKind::Sphere,
-        Vec3::new(0.22, 0.0, 0.0),
     );
 
     // --- A thin “water” slab (very light roughness so the sun sparkles a bit)
@@ -301,7 +295,6 @@ fn spawn_scene(
         Editable,
         EditableMesh {
             kind: SpawnKind::Cuboid,
-            param: 1.0,
         },
         Name::new("Water"),
     ));
