@@ -284,12 +284,15 @@ fn inspector_window(
     mut ev_save: EventWriter<SaveSceneEvent>,
     mut ev_load: EventWriter<LoadSceneEvent>,
 ) {
-    let Some(entity) = state.selected else { return };
+    // We now allow the inspector to be open even when nothing is selected.
+    let selected_entity = state.selected;
     let mut delete_requested = false;
 
     // Load current values from Transform when opening, then keep editing the cached fields.
     // Also refresh when selection changes, so new objects don't inherit stale UI values.
-    if let Ok(tf) = q_tf.get_mut(entity) {
+    if let Some(entity) = selected_entity
+        && let Ok(tf) = q_tf.get_mut(entity)
+    {
         if !state.cache_initialized || state.last_selected != Some(entity) {
             state.pos = tf.translation;
             state.scale = tf.scale;
@@ -314,21 +317,21 @@ fn inspector_window(
             state.window_open = true;
             state.last_selected = Some(entity);
         }
-    }
 
-    if let Ok(tf) = q_tf.get_mut(entity) {
-        // If the window was just opened this frame (or we don't have cache yet), sync cache
-        // This keeps the cache in sync if the entity was transformed by other systems.
-        if !state.window_open {
-            state.pos = tf.translation;
-            state.scale = tf.scale;
-            // Convert current rotation to Euler XYZ (degrees) for UI
-            let (rx, ry, rz) = tf.rotation.to_euler(EulerRot::XYZ);
-            state.rot_deg = Vec3::new(rx.to_degrees(), ry.to_degrees(), rz.to_degrees());
-            state.window_open = true;
-        } else if state.pos == Vec3::ZERO && state.scale == Vec3::ZERO {
-            state.pos = tf.translation;
-            state.scale = tf.scale;
+        if let Ok(tf) = q_tf.get_mut(entity) {
+            // If the window was just opened this frame (or we don't have cache yet), sync cache
+            // This keeps the cache in sync if the entity was transformed by other systems.
+            if !state.window_open {
+                state.pos = tf.translation;
+                state.scale = tf.scale;
+                // Convert current rotation to Euler XYZ (degrees) for UI
+                let (rx, ry, rz) = tf.rotation.to_euler(EulerRot::XYZ);
+                state.rot_deg = Vec3::new(rx.to_degrees(), ry.to_degrees(), rz.to_degrees());
+                state.window_open = true;
+            } else if state.pos == Vec3::ZERO && state.scale == Vec3::ZERO {
+                state.pos = tf.translation;
+                state.scale = tf.scale;
+            }
         }
     }
 
@@ -341,162 +344,184 @@ fn inspector_window(
         .show(ctx, |ui| {
             ui.label("Edit the selected object’s transform");
 
-            ui.separator();
-            ui.heading("Position");
-            ui.horizontal(|ui| {
-                ui.label("x");
-                ui.add(egui::DragValue::new(&mut state.pos.x).speed(0.05));
-                ui.label("y");
-                ui.add(egui::DragValue::new(&mut state.pos.y).speed(0.05));
-                ui.label("z");
-                ui.add(egui::DragValue::new(&mut state.pos.z).speed(0.05));
-            });
-
-            ui.heading("Rotation (deg)");
-            ui.horizontal(|ui| {
-                ui.label("x");
-                ui.add(egui::DragValue::new(&mut state.rot_deg.x).speed(0.5));
-                ui.label("y");
-                ui.add(egui::DragValue::new(&mut state.rot_deg.y).speed(0.5));
-                ui.label("z");
-                ui.add(egui::DragValue::new(&mut state.rot_deg.z).speed(0.5));
-            });
-
-            ui.heading("Scale");
-            ui.horizontal(|ui| {
-                ui.label("x");
-                ui.add(
-                    egui::DragValue::new(&mut state.scale.x)
-                        .speed(0.02)
-                        .range(0.001..=1000.0),
-                );
-                ui.label("y");
-                ui.add(
-                    egui::DragValue::new(&mut state.scale.y)
-                        .speed(0.02)
-                        .range(0.001..=1000.0),
-                );
-                ui.label("z");
-                ui.add(
-                    egui::DragValue::new(&mut state.scale.z)
-                        .speed(0.02)
-                        .range(0.001..=1000.0),
-                );
-            });
+            // Header
+            if let Some(entity) = selected_entity {
+                ui.label(format!("Selected: {:?}", entity));
+            } else {
+                ui.weak("No object selected");
+            }
 
             ui.separator();
-            ui.horizontal(|ui| {
-                ui.vertical(|ui| {
-                    ui.heading("Color");
-                    {
-                        use egui::color_picker::Alpha;
-                        let mut c = state.color_srgba;
-                        egui::color_picker::color_edit_button_srgba(ui, &mut c, Alpha::Opaque);
-                        if c != state.color_srgba {
-                            state.color_srgba = c;
-                            // Apply immediately to material (if available)
-                            if let Some(e) = state.selected {
-                                if let Ok(h) = q_mat.get(e) {
-                                    if let Some(mat) = materials.get_mut(h) {
-                                        let (r, g, b, a) = (
-                                            c.r() as f32 / 255.0,
-                                            c.g() as f32 / 255.0,
-                                            c.b() as f32 / 255.0,
-                                            c.a() as f32 / 255.0,
-                                        );
-                                        mat.base_color = Color::srgba(r, g, b, a);
-                                    }
-                                }
-                            }
-                        }
 
-                        if ui.button("Reset Color").clicked() {
-                            state.color_srgba =
-                                egui::Color32::from_rgba_premultiplied(209, 209, 219, 255);
-                            if let Some(e) = state.selected {
-                                if let Ok(h) = q_mat.get(e) {
-                                    if let Some(mat) = materials.get_mut(h) {
-                                        let (r, g, b, a) = (
-                                            state.color_srgba.r() as f32 / 255.0,
-                                            state.color_srgba.g() as f32 / 255.0,
-                                            state.color_srgba.b() as f32 / 255.0,
-                                            state.color_srgba.a() as f32 / 255.0,
-                                        );
-                                        mat.base_color = Color::srgba(r, g, b, a);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                });
-
-                ui.vertical(|ui| {
-                    ui.heading("Material");
-                    ui.label("Metallic");
-                    let _ =
-                        ui.add(egui::Slider::new(&mut state.metallic, 0.0..=1.0).fixed_decimals(3));
-                    ui.label("Roughness");
-                    let _ = ui
-                        .add(egui::Slider::new(&mut state.roughness, 0.0..=1.0).fixed_decimals(3));
-                });
-                // Apply material changes immediately
-                if let Some(e) = state.selected {
-                    if let Ok(h) = q_mat.get(e) {
-                        if let Some(mat) = materials.get_mut(&h.0) {
-                            mat.metallic = state.metallic.clamp(0.0, 1.0);
-                            mat.perceptual_roughness = state.roughness.clamp(0.0, 1.0);
-                        }
-                    }
-                }
-            });
-
-            ui.separator();
-            ui.horizontal(|ui| {
-                if ui.button("Reset Pos").clicked() {
-                    state.pos = Vec3::ZERO;
-                }
-                if ui.button("Reset Scale (1,1,1)").clicked() {
-                    state.scale = Vec3::ONE;
-                }
+            let controls_enabled = selected_entity.is_some();
+            // Disable transform controls when nothing is selected
+            ui.add_enabled_ui(controls_enabled, |ui| {
+                ui.heading("Position");
                 ui.horizontal(|ui| {
-                    if ui.button("Reset Rotation (0,0,0)").clicked() {
-                        state.rot_deg = Vec3::ZERO;
-                    }
+                    ui.label("x");
+                    ui.add(egui::DragValue::new(&mut state.pos.x).speed(0.05));
+                    ui.label("y");
+                    ui.add(egui::DragValue::new(&mut state.pos.y).speed(0.05));
+                    ui.label("z");
+                    ui.add(egui::DragValue::new(&mut state.pos.z).speed(0.05));
+                });
+
+                ui.heading("Rotation (deg)");
+                ui.horizontal(|ui| {
+                    ui.label("x");
+                    ui.add(egui::DragValue::new(&mut state.rot_deg.x).speed(0.5));
+                    ui.label("y");
+                    ui.add(egui::DragValue::new(&mut state.rot_deg.y).speed(0.5));
+                    ui.label("z");
+                    ui.add(egui::DragValue::new(&mut state.rot_deg.z).speed(0.5));
+                });
+
+                ui.heading("Scale");
+                ui.horizontal(|ui| {
+                    ui.label("x");
+                    ui.add(
+                        egui::DragValue::new(&mut state.scale.x)
+                            .speed(0.02)
+                            .range(0.001..=1000.0),
+                    );
+                    ui.label("y");
+                    ui.add(
+                        egui::DragValue::new(&mut state.scale.y)
+                            .speed(0.02)
+                            .range(0.001..=1000.0),
+                    );
+                    ui.label("z");
+                    ui.add(
+                        egui::DragValue::new(&mut state.scale.z)
+                            .speed(0.02)
+                            .range(0.001..=1000.0),
+                    );
                 });
             });
 
             ui.separator();
-            ui.heading("Scene I/O");
-            ui.horizontal(|ui| {
-                ui.label("File:");
-                let hint = if io.filename.is_empty() {
-                    "scene.json"
-                } else {
-                    ""
-                };
-                let te = egui::TextEdit::singleline(&mut io.filename)
-                    .hint_text(hint)
-                    .desired_width(200.0);
-                ui.add(te);
-                if ui.button("Save").clicked() {
-                    ev_save.write(SaveSceneEvent);
-                }
-                if ui.button("Load").clicked() {
-                    ev_load.write(LoadSceneEvent);
-                }
+
+            ui.add_enabled_ui(controls_enabled, |ui| {
+                ui.horizontal(|ui| {
+                    ui.vertical(|ui| {
+                        ui.heading("Color");
+                        {
+                            use egui::color_picker::Alpha;
+                            let mut c = state.color_srgba;
+                            egui::color_picker::color_edit_button_srgba(ui, &mut c, Alpha::Opaque);
+                            if c != state.color_srgba {
+                                state.color_srgba = c;
+                                // Apply immediately to material (if available)
+                                if let Some(e) = selected_entity {
+                                    if let Ok(h) = q_mat.get(e) {
+                                        if let Some(mat) = materials.get_mut(h) {
+                                            let (r, g, b, a) = (
+                                                c.r() as f32 / 255.0,
+                                                c.g() as f32 / 255.0,
+                                                c.b() as f32 / 255.0,
+                                                c.a() as f32 / 255.0,
+                                            );
+                                            mat.base_color = Color::srgba(r, g, b, a);
+                                        }
+                                    }
+                                }
+                            }
+
+                            if ui.button("Reset Color").clicked() {
+                                state.color_srgba =
+                                    egui::Color32::from_rgba_premultiplied(209, 209, 219, 255);
+                                if let Some(e) = selected_entity {
+                                    if let Ok(h) = q_mat.get(e) {
+                                        if let Some(mat) = materials.get_mut(h) {
+                                            let (r, g, b, a) = (
+                                                state.color_srgba.r() as f32 / 255.0,
+                                                state.color_srgba.g() as f32 / 255.0,
+                                                state.color_srgba.b() as f32 / 255.0,
+                                                state.color_srgba.a() as f32 / 255.0,
+                                            );
+                                            mat.base_color = Color::srgba(r, g, b, a);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    });
+
+                    ui.vertical(|ui| {
+                        ui.heading("Material");
+                        ui.label("Metallic");
+                        let _ = ui.add(
+                            egui::Slider::new(&mut state.metallic, 0.0..=1.0).fixed_decimals(3),
+                        );
+                        ui.label("Roughness");
+                        let _ = ui.add(
+                            egui::Slider::new(&mut state.roughness, 0.0..=1.0).fixed_decimals(3),
+                        );
+                    });
+                    // Apply material changes immediately
+                    if let Some(e) = state.selected {
+                        if let Ok(h) = q_mat.get(e) {
+                            if let Some(mat) = materials.get_mut(&h.0) {
+                                mat.metallic = state.metallic.clamp(0.0, 1.0);
+                                mat.perceptual_roughness = state.roughness.clamp(0.0, 1.0);
+                            }
+                        }
+                    }
+                });
+            });
+
+            ui.add_enabled_ui(controls_enabled, |ui| {
+                ui.separator();
+
+                ui.horizontal(|ui| {
+                    if ui.button("Reset Pos").clicked() {
+                        state.pos = Vec3::ZERO;
+                    }
+                    if ui.button("Reset Scale (1,1,1)").clicked() {
+                        state.scale = Vec3::ONE;
+                    }
+                    ui.horizontal(|ui| {
+                        if ui.button("Reset Rotation (0,0,0)").clicked() {
+                            state.rot_deg = Vec3::ZERO;
+                        }
+                    });
+                });
+
+                ui.separator();
+                ui.heading("Scene I/O");
+                ui.horizontal(|ui| {
+                    ui.label("File:");
+                    let hint = if io.filename.is_empty() {
+                        "scene.json"
+                    } else {
+                        ""
+                    };
+                    let te = egui::TextEdit::singleline(&mut io.filename)
+                        .hint_text(hint)
+                        .desired_width(200.0);
+                    ui.add(te);
+                    if ui.button("Save").clicked() {
+                        ev_save.write(SaveSceneEvent);
+                    }
+                    if ui.button("Load").clicked() {
+                        ev_load.write(LoadSceneEvent);
+                    }
+                });
             });
 
             ui.small("Tip: hold Shift for finer DragValue steps");
 
             ui.separator();
-            // Danger action: delete the selected entity
-            if ui
-                .button(egui::RichText::new("Delete Selected").color(egui::Color32::RED))
-                .clicked()
-            {
-                // Flag deletion after UI closes to avoid borrowing issues
-                delete_requested = true;
-            }
+            ui.add_enabled_ui(controls_enabled, |ui| {
+                // Danger action: delete the selected entity
+                if ui
+                    .button(egui::RichText::new("Delete Selected").color(egui::Color32::RED))
+                    .clicked()
+                {
+                    // Flag deletion after UI closes to avoid borrowing issues
+                    delete_requested = true;
+                }
+            });
 
             ui.separator();
             ui.heading("Create New");
@@ -553,29 +578,32 @@ fn inspector_window(
 
     // Apply changes live while open
     if open {
-        if let Ok(mut tf) = q_tf.get_mut(entity) {
-            tf.translation = state.pos;
-            tf.scale = state.scale;
-            let (rx, ry, rz) = (
-                state.rot_deg.x.to_radians(),
-                state.rot_deg.y.to_radians(),
-                state.rot_deg.z.to_radians(),
-            );
-            tf.rotation = Quat::from_euler(EulerRot::XYZ, rx, ry, rz);
-        }
-        // Keep material in sync with UI (color + metal/rough)
-        if let Ok(h) = q_mat.get(entity) {
-            if let Some(mat) = materials.get_mut(h) {
-                let c = state.color_srgba;
-                let (r, g, b, a) = (
-                    c.r() as f32 / 255.0,
-                    c.g() as f32 / 255.0,
-                    c.b() as f32 / 255.0,
-                    c.a() as f32 / 255.0,
+        if let Some(entity) = selected_entity {
+            if let Ok(mut tf) = q_tf.get_mut(entity) {
+                tf.translation = state.pos;
+                tf.scale = state.scale;
+                let (rx, ry, rz) = (
+                    state.rot_deg.x.to_radians(),
+                    state.rot_deg.y.to_radians(),
+                    state.rot_deg.z.to_radians(),
                 );
-                mat.base_color = Color::srgba(r, g, b, a);
-                mat.metallic = state.metallic.clamp(0.0, 1.0);
-                mat.perceptual_roughness = state.roughness.clamp(0.0, 1.0);
+                tf.rotation = Quat::from_euler(EulerRot::XYZ, rx, ry, rz);
+            }
+
+            // Keep material in sync with UI (color + metal/rough)
+            if let Ok(h) = q_mat.get(entity) {
+                if let Some(mat) = materials.get_mut(h) {
+                    let c = state.color_srgba;
+                    let (r, g, b, a) = (
+                        c.r() as f32 / 255.0,
+                        c.g() as f32 / 255.0,
+                        c.b() as f32 / 255.0,
+                        c.a() as f32 / 255.0,
+                    );
+                    mat.base_color = Color::srgba(r, g, b, a);
+                    mat.metallic = state.metallic.clamp(0.0, 1.0);
+                    mat.perceptual_roughness = state.roughness.clamp(0.0, 1.0);
+                }
             }
         }
     } else {
@@ -592,9 +620,14 @@ fn inspector_window(
         if let Some(e) = state.selected.take() {
             commands.entity(e).despawn();
         }
-        state.window_open = false;
+        state.window_open = true;
         state.cache_initialized = false;
         state.last_selected = None;
+
+        // zero out cached values to visually indicate "inactive"
+        state.pos = Vec3::ZERO;
+        state.scale = Vec3::ZERO;
+        state.rot_deg = Vec3::ZERO;
     }
 }
 
