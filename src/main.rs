@@ -189,10 +189,10 @@ fn spawn_scene(
 
     // --- Mesh prims
     let plane = meshes.add(Mesh::from(Plane3d::default()));
-    let step = meshes.add(Mesh::from(Cuboid::new(4.0, 0.6, 4.0)));
-    let slab = meshes.add(Mesh::from(Cuboid::new(4.0, 0.3, 4.0)));
+    let step = meshes.add(Mesh::from(Cuboid::new(1.0, 1.0, 1.0)));
+    let slab = meshes.add(Mesh::from(Cuboid::new(1.0, 1.0, 1.0)));
     let block = meshes.add(Mesh::from(Cuboid::new(1.0, 1.0, 1.0)));
-    let sphere = meshes.add(Mesh::from(Sphere::new(0.22)));
+    let sphere = meshes.add(Mesh::from(Sphere::new(0.5)));
 
     // --- Base ground (big plane) – slightly tilted camera gives the “tabletop” feel
     commands.spawn((
@@ -212,7 +212,7 @@ fn spawn_scene(
         &mut commands,
         step.clone(),
         grass_b.clone(),
-        Transform::from_xyz(-2.5, 0.3, 1.0),
+        Transform::from_xyz(-2.5, 0.3, 1.0).with_scale(Vec3::new(4.0, 0.6, 4.0)),
         outline_material.clone(),
         0.03,
         "TerraceLow",
@@ -224,7 +224,7 @@ fn spawn_scene(
         &mut commands,
         step.clone(),
         grass_a.clone(),
-        Transform::from_xyz(1.5, 0.3, -0.5),
+        Transform::from_xyz(1.5, 0.3, -0.5).with_scale(Vec3::new(4.0, 0.6, 4.0)),
         outline_material.clone(),
         0.03,
         "TerraceMid",
@@ -236,7 +236,7 @@ fn spawn_scene(
         &mut commands,
         step.clone(),
         grass_b.clone(),
-        Transform::from_xyz(5.0, 0.3, 3.5),
+        Transform::from_xyz(5.0, 0.95, 3.5).with_scale(Vec3::new(4.0, 0.6, 4.0)),
         outline_material.clone(),
         0.03,
         "TerraceHighBase",
@@ -247,14 +247,13 @@ fn spawn_scene(
         c.spawn((
             Mesh3d(slab.clone()),
             MeshMaterial3d(dirt.clone()),
-            Transform::from_xyz(0.0, 0.45, 0.0),
+            Transform::from_xyz(0.0, 1.0, 0.0),
             Name::new("TerraceHighCap"),
         ));
         c.spawn((
             Mesh3d(slab.clone()),
             MeshMaterial3d(outline_material.clone()),
-            Transform::from_translation(Vec3::new(0.0, 0.45, 0.0))
-                * Transform::from_scale(Vec3::splat(1.03)),
+            Transform::from_xyz(0.0, 1.0, 0.0).with_scale(Vec3::new(1.03, 1.03, 1.03)),
             NotShadowCaster,
             OutlineShell,
             Name::new("TerraceHighCap_Outline"),
@@ -283,7 +282,7 @@ fn spawn_scene(
         &mut commands,
         sphere.clone(),
         crystal,
-        Transform::from_xyz(1.5, 0.65, -0.5),
+        Transform::from_xyz(1.5, 0.65, -0.5).with_scale(Vec3::new(0.6, 0.6, 0.6)),
         outline_material.clone(),
         0.03,
         "Crystal",
