@@ -21,6 +21,9 @@ use crate::post::crt::{CRTPlugin, CRTSettings};
 use crate::post::gradient_tint::{GradientTintPlugin, GradientTintSettings};
 use crate::post::outlines::{OutlineParams, OutlineShell, spawn_outlined, update_outlines};
 
+// Rotation speed (radians per second). ~0.8 rad/s ≈ 45.8°/s.
+const ANGULAR_SPEED: f32 = 0.8;
+
 #[derive(Component)]
 struct FpsText;
 
@@ -33,12 +36,14 @@ struct FpsUpdate {
 /// Tag the camera we want to orbit around the target.
 #[derive(Component)]
 struct OrbitCamera {
-    /// Point the camera looks at
+    // Point the camera looks at
     target: Vec3,
-    /// Keep track of which preset we snapped to, 0 => 12, 1 => 3, 2 => 6, 3 => 9
+    // Keep track of which preset we snapped to, 0 => 12, 1 => 3, 2 => 6, 3 => 9
     index_4: i32,
     // Base yaw offset; use PI/4 for isometric diagonals
     yaw_offset_rad: f32,
+    // Continuous offset modified by A/D
+    yaw_extra_rad: f32,
 }
 
 fn main() {
@@ -69,6 +74,7 @@ fn main() {
                 update_fps_text,
                 orbit_camera_hotkeys,
                 orbit_snap_to_index,
+                orbit_camera_rotate_continuous,
             ),
         )
         .run();
@@ -124,6 +130,7 @@ fn spawn_camera(mut commands: Commands) {
             target: Vec3::ZERO,
             index_4: 0,                                  // 0..3 → 1:30, 4:30, 7:30, 10:30
             yaw_offset_rad: std::f32::consts::FRAC_PI_4, // 45°
+            yaw_extra_rad: 0.0,
         },
         Name::new("MainCamera"),
     ));
@@ -573,8 +580,9 @@ fn orbit_snap_to_index(mut q_cam: Query<(&mut Transform, &mut OrbitCamera), With
         let r_xy = (dist * dist - y * y).max(0.0).sqrt();
 
         // Diagonals: base at 45 degress then 90 degree steps → 1:30, 4:30, 7:30, 10:30
-        let angle =
-            ocam.yaw_offset_rad + (ocam.index_4.rem_euclid(4) as f32) * std::f32::consts::FRAC_PI_2;
+        let angle = ocam.yaw_offset_rad
+            + (ocam.index_4.rem_euclid(4) as f32) * std::f32::consts::FRAC_PI_2
+            + ocam.yaw_extra_rad;
         let x = r_xy * angle.cos();
         let z = r_xy * angle.sin();
 
@@ -611,27 +619,34 @@ fn orbit_camera_hotkeys(
         // Update index based on input
         if keys.just_pressed(KeyCode::Digit1) {
             ocam.index_4 = 0;
+            ocam.yaw_extra_rad = 0.0;
         }
         if keys.just_pressed(KeyCode::Digit2) {
             ocam.index_4 = 1;
+            ocam.yaw_extra_rad = 0.0;
         }
         if keys.just_pressed(KeyCode::Digit3) {
             ocam.index_4 = 2;
+            ocam.yaw_extra_rad = 0.0;
         }
         if keys.just_pressed(KeyCode::Digit4) {
             ocam.index_4 = 3;
+            ocam.yaw_extra_rad = 0.0;
         }
         if keys.just_pressed(KeyCode::KeyQ) {
             ocam.index_4 -= 1;
+            ocam.yaw_extra_rad = 0.0;
         }
         if keys.just_pressed(KeyCode::KeyE) {
             ocam.index_4 += 1;
+            ocam.yaw_extra_rad = 0.0;
         }
 
         // Compute new position on the ring at same distance & height
         let r_xy = (dist * dist - y * y).max(0.0).sqrt();
-        let angle =
-            ocam.yaw_offset_rad + (ocam.index_4.rem_euclid(4) as f32) * std::f32::consts::FRAC_PI_2;
+        let angle = ocam.yaw_offset_rad
+            + (ocam.index_4.rem_euclid(4) as f32) * std::f32::consts::FRAC_PI_2
+            + ocam.yaw_extra_rad;
         let x = r_xy * angle.cos();
         let z = r_xy * angle.sin();
 
@@ -639,5 +654,44 @@ fn orbit_camera_hotkeys(
 
         // Point at target with up=Y
         *tf = look_from(pos, target);
+    }
+}
+
+fn orbit_camera_rotate_continuous(
+    keys: Res<ButtonInput<KeyCode>>,
+    time: Res<Time>,
+    mut q_cam: Query<(&mut Transform, &mut OrbitCamera), With<Camera3d>>,
+) {
+    let left = keys.pressed(KeyCode::KeyA);
+    let right = keys.pressed(KeyCode::KeyD);
+    if !(left || right) {
+        return;
+    }
+
+    let dt = time.delta_secs();
+    let dir = (right as i32 - left as i32) as f32; // right = +1, left = -1
+
+    for (mut tf, mut ocam) in &mut q_cam {
+        // Update extra yaw, wrap around TAU just to keep it bounded
+        ocam.yaw_extra_rad =
+            (ocam.yaw_extra_rad + dir * ANGULAR_SPEED * dt) % std::f32::consts::TAU;
+
+        // Keep current height & distance
+        let target = ocam.target;
+        let offset = tf.translation - target;
+        let dist = offset.length().max(0.0001);
+        let y = offset.y;
+        let r_xy = (dist * dist - y * y).max(0.0).sqrt();
+
+        // Total angle = diagonal base + 90° steps + continuous extra
+        let angle = ocam.yaw_offset_rad
+            + (ocam.index_4.rem_euclid(4) as f32) * std::f32::consts::FRAC_PI_2
+            + ocam.yaw_extra_rad;
+
+        let x = r_xy * angle.cos();
+        let z = r_xy * angle.sin();
+        let pos = Vec3::new(x, y, z) + target;
+
+        *tf = Transform::from_translation(pos).looking_at(target, Vec3::Y);
     }
 }
