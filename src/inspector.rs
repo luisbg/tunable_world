@@ -279,21 +279,34 @@ fn inspector_window(
     mut egui_ctxs: EguiContexts,
     mut q_tf: Query<&mut Transform>,
     q_selected: Query<Entity, With<Selected>>,
+
     // Scene I/O resources and events
     mut io: ResMut<SceneIoState>,
     mut ev_save: EventWriter<SaveSceneEvent>,
     mut ev_load: EventWriter<LoadSceneEvent>,
+
+    // For duplication: read Name/Transform/Mesh/Material/EditableMesh off the selected entity
+    q_dup: Query<(
+        Option<&Name>,
+        &Mesh3d,
+        &MeshMaterial3d<StandardMaterial>,
+        Option<&EditableMesh>,
+    )>,
 ) {
     // We now allow the inspector to be open even when nothing is selected.
     let selected_entity = state.selected;
     let mut delete_requested = false;
     let mut deselect_requested = false;
+    let mut copy_requested = false;
+    let mut selected_tf = Transform::from_xyz(0.0, 0.0, 0.0);
 
     // Load current values from Transform when opening, then keep editing the cached fields.
     // Also refresh when selection changes, so new objects don't inherit stale UI values.
     if let Some(entity) = selected_entity
         && let Ok(tf) = q_tf.get_mut(entity)
     {
+        selected_tf = *tf;
+
         if !state.cache_initialized || state.last_selected != Some(entity) {
             state.pos = tf.translation;
             state.scale = tf.scale;
@@ -515,13 +528,20 @@ fn inspector_window(
             ui.separator();
             ui.add_enabled_ui(controls_enabled, |ui| {
                 ui.horizontal(|ui| {
+                    if ui
+                        .add_enabled(selected_entity.is_some(), egui::Button::new("Copy"))
+                        .clicked()
+                    {
+                        copy_requested = true;
+                    }
+
                     if ui.button("Deselect").clicked() {
                         deselect_requested = true;
                     }
 
                     // Danger action: delete the selected entity
                     if ui
-                        .button(egui::RichText::new("Delete Selected").color(egui::Color32::RED))
+                        .button(egui::RichText::new("Delete").color(egui::Color32::RED))
                         .clicked()
                     {
                         // Flag deletion after UI closes to avoid borrowing issues
@@ -620,6 +640,50 @@ fn inspector_window(
         // Keep the selection, but stop forcing cache
         state.pos = Vec3::ZERO;
         state.scale = Vec3::ZERO;
+    }
+
+    // Perform deferred duplication if requested
+    if copy_requested {
+        if let Some(src) = selected_entity {
+            if let Ok((name_opt, mesh3d, mat3d, mesh_info_opt)) = q_dup.get(src) {
+                // Clone (duplicate) the material asset so edits to the new copy won't affect the original
+                let new_mat_handle = if let Some(src_mat) = materials.get(&mat3d.0) {
+                    let cloned = src_mat.clone();
+                    materials.add(cloned)
+                } else {
+                    // Fallback: if the material is missing from Assets, reuse the handle
+                    mat3d.0.clone()
+                };
+
+                // TODO: tweak name
+                let new_name = name_opt
+                    .map(|n| format!("{} (copy)", n.as_str()))
+                    .unwrap_or_else(|| "Copy".to_string());
+
+                // Keep the same transform (position/rotation/scale) and mesh
+                let mut ecmd = commands.spawn((
+                    mesh3d.clone(),
+                    MeshMaterial3d(new_mat_handle),
+                    selected_tf.clone(),
+                    Editable,
+                    Selected,
+                    Name::new(new_name),
+                ));
+                // Preserve mesh metadata if present (so save/load & inspector know the kind)
+                if let Some(mi) = mesh_info_opt {
+                    ecmd.insert(*mi);
+                }
+
+                // Update inspector selection to the new entity
+                let new_e = ecmd.id();
+                // Remove Selected from the previous one to keep single-select
+                commands.entity(src).remove::<Selected>();
+                state.selected = Some(new_e);
+                state.window_open = true;
+                state.cache_initialized = false;
+                state.last_selected = Some(new_e);
+            }
+        }
     }
 
     // Perform deferred deselect or deletion if requested
