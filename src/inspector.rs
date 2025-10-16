@@ -93,7 +93,12 @@ impl Plugin for InspectorPlugin {
             .add_event::<LoadSceneEvent>()
             .add_systems(
                 Update,
-                (pick_on_click, save_scene_system, load_scene_system),
+                (
+                    pick_on_click,
+                    save_scene_system,
+                    load_scene_system,
+                    highlight_selected_gizmos,
+                ),
             )
             .add_systems(EguiPrimaryContextPass, inspector_window);
     }
@@ -751,5 +756,39 @@ fn load_scene_system(
                 ecmd.insert(Name::new(name));
             }
         }
+    }
+}
+
+/// Draw a pulsing wireframe AABB + tiny axes for the currently selected object.
+fn highlight_selected_gizmos(
+    mut gizmos: Gizmos,
+    time: Res<Time>,
+    q_sel: Query<(&GlobalTransform, &Aabb), With<Selected>>,
+) {
+    // Pulse between 70% and 100% intensity (~0.5Hz)
+    let t = time.elapsed_secs_wrapped();
+    let pulse = 0.7 + 0.3 * (t * std::f32::consts::TAU * 0.5).sin().abs();
+    let box_color = Color::srgb(1.0 * pulse, 0.85 * pulse, 0.2 * pulse);
+
+    for (global, aabb) in &q_sel {
+        // World-space AABB using your helper
+        let world = aabb_world(*aabb, global);
+        let center: Vec3 = world.center.into();
+        let extents: Vec3 = (world.half_extents * 2.0).into();
+
+        // Wireframe cuboid gizmo around the object
+        let tf = Transform {
+            translation: center,
+            rotation: Quat::IDENTITY,
+            scale: extents.max(Vec3::splat(0.0001)), // guard against zero
+        };
+        gizmos.cuboid(tf, box_color);
+
+        // Tiny XYZ axes at the center for orientation
+        let axis_len = extents.length().max(0.0001) * 0.1; // 10% of overall size
+        let p = center;
+        gizmos.ray(p, Vec3::X * axis_len, Color::srgb(1.0, 0.0, 0.0));
+        gizmos.ray(p, Vec3::Y * axis_len, Color::srgb(0.0, 1.0, 0.0));
+        gizmos.ray(p, Vec3::Z * axis_len, Color::srgb(0.0, 0.0, 1.0));
     }
 }
