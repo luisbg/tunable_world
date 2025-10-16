@@ -30,6 +30,17 @@ struct FpsUpdate {
     cached_fps: f64,
 }
 
+/// Tag the camera we want to orbit around the target.
+#[derive(Component)]
+struct OrbitCamera {
+    /// Point the camera looks at
+    target: Vec3,
+    /// Keep track of which preset we snapped to, 0 => 12, 1 => 3, 2 => 6, 3 => 9
+    index_4: i32,
+    // Base yaw offset; use PI/4 for isometric diagonals
+    yaw_offset_rad: f32,
+}
+
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins.set(WindowPlugin {
@@ -51,7 +62,15 @@ fn main() {
         .add_systems(Startup, (spawn_camera, spawn_light, spawn_scene))
         .add_systems(PostStartup, setup_fps_text)
         .add_systems(EguiPrimaryContextPass, post_process_edit_panel)
-        .add_systems(Update, (update_outlines, update_fps_text))
+        .add_systems(
+            Update,
+            (
+                update_outlines,
+                update_fps_text,
+                orbit_camera_hotkeys,
+                orbit_snap_to_index,
+            ),
+        )
         .run();
 }
 
@@ -100,6 +119,11 @@ fn spawn_camera(mut commands: Commands) {
             strength: 0.5,
             color_top_right: Vec4::new(0.9, 0.2, 0.3, 1.0), // pink-tint
             color_bottom_left: Vec4::new(0.2, 0.9, 0.8, 1.0), // cyan-tint
+        },
+        OrbitCamera {
+            target: Vec3::ZERO,
+            index_4: 0,                                  // 0..3 → 1:30, 4:30, 7:30, 10:30
+            yaw_offset_rad: std::f32::consts::FRAC_PI_4, // 45°
         },
         Name::new("MainCamera"),
     ));
@@ -527,5 +551,93 @@ fn update_fps_text(
 
             text.0 = format!("{:.0}", upd.cached_fps);
         }
+    }
+}
+
+/// Helper: compute the *local* transform that looks at `target` with `up = Vec3::Y`,
+/// at a specific desired world-space position.
+fn look_from(pos: Vec3, target: Vec3) -> Transform {
+    Transform::from_translation(pos).looking_at(target, Vec3::Y)
+}
+
+/// Snap camera to one of the 4 clock angles around +Y, preserving the current distance and height.
+fn orbit_snap_to_index(mut q_cam: Query<(&mut Transform, &mut OrbitCamera), With<Camera3d>>) {
+    for (mut tf, ocam) in &mut q_cam {
+        let target = ocam.target;
+
+        // Current distance from target
+        let offset = tf.translation - target;
+        let dist = offset.length().max(0.0001);
+        let y = offset.y; // keep current height
+        // radial distance in XZ required to preserve the same 3D distance
+        let r_xy = (dist * dist - y * y).max(0.0).sqrt();
+
+        // Diagonals: base at 45 degress then 90 degree steps → 1:30, 4:30, 7:30, 10:30
+        let angle =
+            ocam.yaw_offset_rad + (ocam.index_4.rem_euclid(4) as f32) * std::f32::consts::FRAC_PI_2;
+        let x = r_xy * angle.cos();
+        let z = r_xy * angle.sin();
+
+        let pos = Vec3::new(x, y, z) + target;
+        *tf = look_from(pos, target);
+    }
+}
+
+/// Hotkeys to snap the camera:
+/// 1 / 2 / 3 / 4  => 12 / 3 / 6 / 9 o'clock
+/// Q / E          => rotate left / right by 90 degrees
+fn orbit_camera_hotkeys(
+    keys: Res<ButtonInput<KeyCode>>,
+    mut q_cam: Query<(&mut Transform, &mut OrbitCamera), With<Camera3d>>,
+) {
+    // Early out if no relevant key pressed
+    let any = keys.just_pressed(KeyCode::Digit1)
+        || keys.just_pressed(KeyCode::Digit2)
+        || keys.just_pressed(KeyCode::Digit3)
+        || keys.just_pressed(KeyCode::Digit4)
+        || keys.just_pressed(KeyCode::KeyQ)
+        || keys.just_pressed(KeyCode::KeyE);
+    if !any {
+        return;
+    }
+
+    for (mut tf, mut ocam) in &mut q_cam {
+        // Determine current y & distance once per press (preserve them across snaps)
+        let target = ocam.target;
+        let offset = tf.translation - target;
+        let dist = offset.length().max(0.0001);
+        let y = offset.y;
+
+        // Update index based on input
+        if keys.just_pressed(KeyCode::Digit1) {
+            ocam.index_4 = 0;
+        }
+        if keys.just_pressed(KeyCode::Digit2) {
+            ocam.index_4 = 1;
+        }
+        if keys.just_pressed(KeyCode::Digit3) {
+            ocam.index_4 = 2;
+        }
+        if keys.just_pressed(KeyCode::Digit4) {
+            ocam.index_4 = 3;
+        }
+        if keys.just_pressed(KeyCode::KeyQ) {
+            ocam.index_4 -= 1;
+        }
+        if keys.just_pressed(KeyCode::KeyE) {
+            ocam.index_4 += 1;
+        }
+
+        // Compute new position on the ring at same distance & height
+        let r_xy = (dist * dist - y * y).max(0.0).sqrt();
+        let angle =
+            ocam.yaw_offset_rad + (ocam.index_4.rem_euclid(4) as f32) * std::f32::consts::FRAC_PI_2;
+        let x = r_xy * angle.cos();
+        let z = r_xy * angle.sin();
+
+        let pos = Vec3::new(x, y, z) + target;
+
+        // Point at target with up=Y
+        *tf = look_from(pos, target);
     }
 }
