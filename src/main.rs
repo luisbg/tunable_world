@@ -46,6 +46,12 @@ struct OrbitCamera {
     yaw_extra_rad: f32,
 }
 
+#[derive(SystemSet, Debug, Hash, PartialEq, Eq, Clone)]
+enum OrbitSet {
+    Input, // read keyboard; mutate state
+    Pose,  // compute and write Transform once
+}
+
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins.set(WindowPlugin {
@@ -67,14 +73,15 @@ fn main() {
         .add_systems(Startup, (spawn_camera, spawn_light, spawn_scene))
         .add_systems(PostStartup, setup_fps_text)
         .add_systems(EguiPrimaryContextPass, post_process_edit_panel)
+        .configure_sets(Update, (OrbitSet::Input, OrbitSet::Pose).chain())
         .add_systems(
             Update,
             (
                 update_outlines,
                 update_fps_text,
-                orbit_camera_hotkeys,
-                orbit_snap_to_index,
-                orbit_camera_rotate_continuous,
+                orbit_camera_hotkeys.in_set(OrbitSet::Input),
+                orbit_snap_to_index.in_set(OrbitSet::Pose),
+                orbit_camera_rotate_continuous.in_set(OrbitSet::Pose),
             ),
         )
         .run();
