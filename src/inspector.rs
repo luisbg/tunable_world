@@ -277,7 +277,6 @@ fn inspector_window(
     q_mat: Query<&MeshMaterial3d<StandardMaterial>>,
     mut state: ResMut<InspectorState>,
     mut egui_ctxs: EguiContexts,
-    mut q_tf: Query<&mut Transform>,
     q_selected: Query<Entity, With<Selected>>,
 
     // Scene I/O resources and events
@@ -285,12 +284,17 @@ fn inspector_window(
     mut ev_save: EventWriter<SaveSceneEvent>,
     mut ev_load: EventWriter<LoadSceneEvent>,
 
+    // Group Transform (&mut) and the duplication read query into a ParamSet to avoid conflicts.
     // For duplication: read Name/Transform/Mesh/Material/EditableMesh off the selected entity
-    q_dup: Query<(
-        Option<&Name>,
-        &Mesh3d,
-        &MeshMaterial3d<StandardMaterial>,
-        Option<&EditableMesh>,
+    mut ps_tf_dup: ParamSet<(
+        Query<&mut Transform>,
+        Query<(
+            Option<&Name>,
+            &Transform,
+            &Mesh3d,
+            &MeshMaterial3d<StandardMaterial>,
+            Option<&EditableMesh>,
+        )>,
     )>,
 ) {
     // We now allow the inspector to be open even when nothing is selected.
@@ -298,15 +302,12 @@ fn inspector_window(
     let mut delete_requested = false;
     let mut deselect_requested = false;
     let mut copy_requested = false;
-    let mut selected_tf = Transform::from_xyz(0.0, 0.0, 0.0);
 
     // Load current values from Transform when opening, then keep editing the cached fields.
     // Also refresh when selection changes, so new objects don't inherit stale UI values.
     if let Some(entity) = selected_entity
-        && let Ok(tf) = q_tf.get_mut(entity)
+        && let Ok(tf) = ps_tf_dup.p0().get_mut(entity)
     {
-        selected_tf = *tf;
-
         if !state.cache_initialized || state.last_selected != Some(entity) {
             state.pos = tf.translation;
             state.scale = tf.scale;
@@ -332,7 +333,7 @@ fn inspector_window(
             state.last_selected = Some(entity);
         }
 
-        if let Ok(tf) = q_tf.get_mut(entity) {
+        if let Ok(tf) = ps_tf_dup.p0().get_mut(entity) {
             // If the window was just opened this frame (or we don't have cache yet), sync cache
             // This keeps the cache in sync if the entity was transformed by other systems.
             if !state.window_open {
@@ -606,7 +607,7 @@ fn inspector_window(
     // Apply changes live while open
     if open {
         if let Some(entity) = selected_entity {
-            if let Ok(mut tf) = q_tf.get_mut(entity) {
+            if let Ok(mut tf) = ps_tf_dup.p0().get_mut(entity) {
                 tf.translation = state.pos;
                 tf.scale = state.scale;
                 let (rx, ry, rz) = (
@@ -645,7 +646,7 @@ fn inspector_window(
     // Perform deferred duplication if requested
     if copy_requested {
         if let Some(src) = selected_entity {
-            if let Ok((name_opt, mesh3d, mat3d, mesh_info_opt)) = q_dup.get(src) {
+            if let Ok((name_opt, tf, mesh3d, mat3d, mesh_info_opt)) = ps_tf_dup.p1().get(src) {
                 // Clone (duplicate) the material asset so edits to the new copy won't affect the original
                 let new_mat_handle = if let Some(src_mat) = materials.get(&mat3d.0) {
                     let cloned = src_mat.clone();
@@ -664,7 +665,7 @@ fn inspector_window(
                 let mut ecmd = commands.spawn((
                     mesh3d.clone(),
                     MeshMaterial3d(new_mat_handle),
-                    selected_tf.clone(),
+                    tf.clone(),
                     Editable,
                     Selected,
                     Name::new(new_name),
