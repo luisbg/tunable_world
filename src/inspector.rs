@@ -287,6 +287,7 @@ fn inspector_window(
     // We now allow the inspector to be open even when nothing is selected.
     let selected_entity = state.selected;
     let mut delete_requested = false;
+    let mut deselect_requested = false;
 
     // Load current values from Transform when opening, then keep editing the cached fields.
     // Also refresh when selection changes, so new objects don't inherit stale UI values.
@@ -513,14 +514,20 @@ fn inspector_window(
 
             ui.separator();
             ui.add_enabled_ui(controls_enabled, |ui| {
-                // Danger action: delete the selected entity
-                if ui
-                    .button(egui::RichText::new("Delete Selected").color(egui::Color32::RED))
-                    .clicked()
-                {
-                    // Flag deletion after UI closes to avoid borrowing issues
-                    delete_requested = true;
-                }
+                ui.horizontal(|ui| {
+                    if ui.button("Deselect").clicked() {
+                        deselect_requested = true;
+                    }
+
+                    // Danger action: delete the selected entity
+                    if ui
+                        .button(egui::RichText::new("Delete Selected").color(egui::Color32::RED))
+                        .clicked()
+                    {
+                        // Flag deletion after UI closes to avoid borrowing issues
+                        delete_requested = true;
+                    }
+                })
             });
 
             ui.separator();
@@ -615,15 +622,23 @@ fn inspector_window(
         state.scale = Vec3::ZERO;
     }
 
-    // Perform deferred deletion if requested
-    if delete_requested {
-        if let Some(e) = state.selected.take() {
-            commands.entity(e).despawn();
+    // Perform deferred deselect or deletion if requested
+    if deselect_requested || delete_requested {
+        if deselect_requested {
+            if let Some(e) = state.selected.take() {
+                // Remove visual/logic selection tag
+                commands.entity(e).remove::<Selected>();
+            }
+        } else if delete_requested {
+            if let Some(e) = state.selected.take() {
+                commands.entity(e).despawn();
+            }
         }
+
+        // Keep the inspector open in "no selection" mode
         state.window_open = true;
         state.cache_initialized = false;
         state.last_selected = None;
-
         // zero out cached values to visually indicate "inactive"
         state.pos = Vec3::ZERO;
         state.scale = Vec3::ZERO;
