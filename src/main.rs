@@ -1,3 +1,4 @@
+use bevy::diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin};
 use bevy::prelude::*;
 use bevy::{
     core_pipeline::{
@@ -20,6 +21,15 @@ use crate::post::crt::{CRTPlugin, CRTSettings};
 use crate::post::gradient_tint::{GradientTintPlugin, GradientTintSettings};
 use crate::post::outlines::{OutlineParams, OutlineShell, spawn_outlined, update_outlines};
 
+#[derive(Component)]
+struct FpsText;
+
+#[derive(Resource)]
+struct FpsUpdate {
+    timer: Timer,
+    cached_fps: f64,
+}
+
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins.set(WindowPlugin {
@@ -29,6 +39,9 @@ fn main() {
             }),
             ..default()
         }))
+        .add_plugins((
+            FrameTimeDiagnosticsPlugin::default(), // collects fps and frame time
+        ))
         .add_plugins(ChromaAberrationPlugin)
         .add_plugins(CRTPlugin)
         .add_plugins(GradientTintPlugin)
@@ -36,8 +49,9 @@ fn main() {
         .add_plugins(EguiPlugin::default())
         .add_plugins(InspectorPlugin)
         .add_systems(Startup, (spawn_camera, spawn_light, spawn_scene))
+        .add_systems(PostStartup, setup_fps_text)
         .add_systems(EguiPrimaryContextPass, post_process_edit_panel)
-        .add_systems(Update, update_outlines)
+        .add_systems(Update, (update_outlines, update_fps_text))
         .run();
 }
 
@@ -468,4 +482,51 @@ fn post_process_edit_panel(
     outline.enabled = enabled;
     outline.width = width.clamp(0.0, 0.25);
     outline.color = color;
+}
+
+fn setup_fps_text(mut commands: Commands, asset_server: Res<AssetServer>) {
+    commands.insert_resource(FpsUpdate {
+        timer: Timer::from_seconds(1.0, TimerMode::Repeating),
+        cached_fps: 0.0,
+    });
+
+    commands.spawn((
+        Text::new(""),
+        TextFont {
+            // This font is loaded and will be used instead of the default font.
+            font: asset_server.load("fonts/Roboto_static_regular.ttf"),
+            font_size: 16.0,
+            ..default()
+        },
+        FpsText,
+        Node {
+            position_type: PositionType::Absolute,
+            bottom: Val::Px(15.0),
+            right: Val::Px(15.0),
+            ..default()
+        },
+    ));
+}
+
+fn update_fps_text(
+    time: Res<Time>,
+    diagnostics: Res<DiagnosticsStore>,
+    mut q: Query<&mut Text, With<FpsText>>,
+    mut upd: ResMut<FpsUpdate>,
+) {
+    upd.timer.tick(time.delta());
+
+    // Only refresh the cached numbers once per second
+    if upd.timer.finished() {
+        if let Ok(mut text) = q.single_mut() {
+            if let Some(fps) = diagnostics
+                .get(&FrameTimeDiagnosticsPlugin::FPS)
+                .and_then(|d| d.smoothed())
+            {
+                upd.cached_fps = fps;
+            }
+
+            text.0 = format!("{:.0}", upd.cached_fps);
+        }
+    }
 }
