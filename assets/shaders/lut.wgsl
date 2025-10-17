@@ -11,13 +11,12 @@ struct LutParams {
 @group(0) @binding(2) var<uniform> params: LutParams;
 
 @group(0) @binding(3) var lut_tex: texture_2d<f32>;
-@group(0) @binding(4) var lut_sampler: sampler; // linear clamp
 
 // Map slice index -> (col,row) tile; then to pixel coords inside atlas
 // Assumes an 8x8 grid
 fn lut64_slice_to_px(slice: i32, r: i32, g: i32, tile: i32) -> vec2<i32> {
-    let col = slice % 8;
-    let row = slice / 8;
+    let col = slice % 8;  // horizontal tile
+    let row = slice / 8;  // vertical tile
     let x   = col * tile + r;
     let y   = row * tile + g;
     return vec2<i32>(x, y);
@@ -74,7 +73,7 @@ fn fragment(in: FullscreenVertexOutput) -> @location(0) vec4<f32> {
   if (params.enabled == 0u) {
     return base_src;
   }
-    
+
   let remapped = sample_lut64_8x8_trilinear(lut_tex, base_src.rgb);
 
   let out_rgb = mix(base_src.rgb, remapped, clamp(params.strength, 0.0, 1.0));

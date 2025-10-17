@@ -150,7 +150,6 @@ impl ViewNode for PostProcessNode {
                 // Set the settings binding
                 settings_binding.clone(),
                 &view_a.texture_view,
-                &view_a.sampler,
             )),
         );
 
@@ -259,7 +258,7 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     // so Bevy converts to linear on upload; your post-pass usually runs in linear.
     let lut_handle: Handle<Image> =
         asset_server.load_with_settings("luts/lookup.png", |s: &mut ImageLoaderSettings| {
-            s.is_srgb = true; // set to false only if your LUT values are already linear!
+            s.is_srgb = false; // set to false only if your LUT values are already linear!
             s.sampler = ImageSampler::Descriptor(ImageSamplerDescriptor {
                 label: Some("lut_sampler".into()),
                 address_mode_u: ImageAddressMode::ClampToEdge,
@@ -308,8 +307,6 @@ impl FromWorld for PostProcessPipeline {
                     // LUT
                     // 3: lut_tex: LUT image table
                     texture_2d(TextureSampleType::Float { filterable: true }),
-                    // 4: lut_sampler: LUT image sampler
-                    sampler(SamplerBindingType::Filtering),
                 ),
             ),
         );
