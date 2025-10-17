@@ -19,6 +19,7 @@ use crate::inspector::{Editable, EditableMesh, InspectorPlugin, SpawnKind};
 use crate::post::chroma_aberration::{ChromaAberrationPlugin, ChromaAberrationSettings};
 use crate::post::crt::{CRTPlugin, CRTSettings};
 use crate::post::gradient_tint::{GradientTintPlugin, GradientTintSettings};
+use crate::post::lut::{LutPlugin, LutSettings};
 use crate::post::outlines::{OutlineParams, OutlineShell, spawn_outlined, update_outlines};
 
 // Rotation speed (radians per second). ~0.8 rad/s ≈ 45.8°/s.
@@ -67,6 +68,7 @@ fn main() {
         .add_plugins(ChromaAberrationPlugin)
         .add_plugins(CRTPlugin)
         .add_plugins(GradientTintPlugin)
+        .add_plugins(LutPlugin)
         // UI plugin (egui)
         .add_plugins(EguiPlugin::default())
         .add_plugins(InspectorPlugin)
@@ -87,8 +89,7 @@ fn main() {
         .run();
 }
 
-/// HDR camera with bloom, filmic tonemapping, gentle DoF-like vibe via composition.
-/// (Real DoF is optional; this keeps it simple and solid for 0.16.)
+/// Camera with bloom, filmic tonemapping, gentle DoF-like vibe.
 fn spawn_camera(mut commands: Commands) {
     commands.spawn((
         Camera3d { ..default() },
@@ -132,6 +133,12 @@ fn spawn_camera(mut commands: Commands) {
             strength: 0.5,
             color_top_right: Vec4::new(0.9, 0.2, 0.3, 1.0), // pink-tint
             color_bottom_left: Vec4::new(0.2, 0.9, 0.8, 1.0), // cyan-tint
+        },
+        LutSettings {
+            enabled: 1,
+            strength: 1.0,
+            lut_size: 16,
+            //            lut_image: asset_server.load("luts/warm_16.png"),
         },
         OrbitCamera {
             target: Vec3::ZERO,
