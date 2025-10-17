@@ -138,7 +138,6 @@ fn spawn_camera(mut commands: Commands) {
             enabled: 1,
             strength: 1.0,
             lut_size: 16,
-            //            lut_image: asset_server.load("luts/warm_16.png"),
         },
         OrbitCamera {
             target: Vec3::ZERO,
@@ -364,10 +363,11 @@ fn post_process_edit_panel(
     mut q_cam: Query<(&mut DepthOfField, &GlobalTransform), With<Camera3d>>,
     mut outline: ResMut<OutlineParams>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    (mut chroma_settings, mut crt_settings, mut gradient_tint_settings): (
+    (mut chroma_settings, mut crt_settings, mut gradient_tint_settings, mut lut_settings): (
         Query<&mut ChromaAberrationSettings>,
         Query<&mut CRTSettings>,
         Query<&mut GradientTintSettings>,
+        Query<&mut LutSettings>,
     ),
 ) {
     let Ok((mut dof, cam_xform)) = q_cam.single_mut() else {
@@ -504,6 +504,17 @@ fn post_process_edit_panel(
                 resp = ui.checkbox(&mut additive, "Additive");
                 if resp.changed() {
                     gt.additive = additive as u32; // 1 or 0
+                }
+            }
+
+            ui.separator();
+
+            ui.heading("LUT");
+            if let Ok(mut lut) = lut_settings.single_mut() {
+                let mut on = lut.enabled != 0;
+                let resp = ui.checkbox(&mut on, "Enabled");
+                if resp.changed() {
+                    lut.enabled = on as u32; // 1 or 0
                 }
             }
         });
