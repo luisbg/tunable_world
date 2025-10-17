@@ -19,7 +19,7 @@ use crate::inspector::{Editable, EditableMesh, InspectorPlugin, SpawnKind};
 use crate::post::chroma_aberration::{ChromaAberrationPlugin, ChromaAberrationSettings};
 use crate::post::crt::{CRTPlugin, CRTSettings};
 use crate::post::gradient_tint::{GradientTintPlugin, GradientTintSettings};
-use crate::post::lut::{LutPlugin, LutSettings};
+use crate::post::lut::{LutPlugin, LutSettings, LutUiState, lut_apply_pending};
 use crate::post::outlines::{OutlineParams, OutlineShell, spawn_outlined, update_outlines};
 
 // Rotation speed (radians per second). ~0.8 rad/s ≈ 45.8°/s.
@@ -84,6 +84,7 @@ fn main() {
                 orbit_camera_hotkeys.in_set(OrbitSet::Input),
                 orbit_snap_to_index.in_set(OrbitSet::Pose),
                 orbit_camera_rotate_continuous.in_set(OrbitSet::Pose),
+                lut_apply_pending,
             ),
         )
         .run();
@@ -369,6 +370,7 @@ fn post_process_edit_panel(
         Query<&mut GradientTintSettings>,
         Query<&mut LutSettings>,
     ),
+    mut ui_state: ResMut<LutUiState>,
 ) {
     let Ok((mut dof, cam_xform)) = q_cam.single_mut() else {
         return;
@@ -515,6 +517,16 @@ fn post_process_edit_panel(
                 let resp = ui.checkbox(&mut on, "Enabled");
                 if resp.changed() {
                     lut.enabled = on as u32; // 1 or 0
+                }
+
+                ui.label("PNG path:");
+                let te = egui::TextEdit::singleline(&mut ui_state.path)
+                    .hint_text("luts/neutral_16.png")
+                    .desired_width(200.0);
+                ui.add(te);
+
+                if ui.button("Load").clicked() {
+                    ui_state.pending = Some(ui_state.path.clone());
                 }
             }
         });

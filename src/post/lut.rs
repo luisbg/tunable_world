@@ -96,14 +96,14 @@ impl ViewNode for PostProcessNode {
         // Get the pipeline resource that contains the global data we need
         // to create the render pipeline
         let post_process_pipeline = world.resource::<PostProcessPipeline>();
+        let gpu_images = world.resource::<RenderAssets<GpuImage>>();
 
-        // let cpu_images = world.resource::<LutImages>();
         let Some(cpu_images) = world.get_resource::<LutImages>() else {
             return Ok(());
         };
-        let gpu_images = world.resource::<RenderAssets<GpuImage>>();
-        let view_a = gpu_images.get(&cpu_images.texture_a).unwrap();
-        // let Some(gpu_image) = gpu_images.get(&lut_images.texture_a) else { return Ok(()); };
+        let Some(view_a) = gpu_images.get(&cpu_images.texture_a) else {
+            return Ok(());
+        };
 
         // The pipeline cache is a cache of all previously created pipelines.
         // It is required to avoid creating a new pipeline each frame,
@@ -202,6 +202,8 @@ impl Plugin for LutPlugin {
         ));
 
         app.add_systems(PreStartup, setup);
+
+        app.init_resource::<LutUiState>();
 
         // We need to get the render app from the main app
         let Some(render_app) = app.get_sub_app_mut(RenderApp) else {
@@ -352,5 +354,54 @@ impl FromWorld for PostProcessPipeline {
             sampler,
             pipeline_id,
         }
+    }
+}
+
+#[derive(Resource)]
+pub struct LutUiState {
+    pub path: String,            // current text path
+    pub pending: Option<String>, // path we want to load next
+}
+
+impl Default for LutUiState {
+    fn default() -> Self {
+        Self {
+            path: "luts/warm_16.png".to_string(),
+            pending: None,
+        }
+    }
+}
+
+pub fn lut_apply_pending(
+    mut commands: Commands,
+    mut ui_state: ResMut<LutUiState>,
+    asset_server: Res<AssetServer>,
+) {
+    if let Some(path) = ui_state.pending.take() {
+        // Load with sampler configured for LUTs.
+        let handle: Handle<Image> =
+            asset_server.load_with_settings(path.clone(), |s: &mut ImageLoaderSettings| {
+                s.is_srgb = true; // most PNG LUTs authored in sRGB
+                s.sampler = ImageSampler::Descriptor(ImageSamplerDescriptor {
+                    label: Some("lut_sampler".into()),
+                    address_mode_u: ImageAddressMode::ClampToEdge,
+                    address_mode_v: ImageAddressMode::ClampToEdge,
+                    address_mode_w: ImageAddressMode::ClampToEdge,
+                    mag_filter: ImageFilterMode::Nearest,
+                    min_filter: ImageFilterMode::Nearest,
+                    mipmap_filter: ImageFilterMode::Nearest,
+                    lod_min_clamp: 0.0,
+                    lod_max_clamp: 0.0,
+                    ..Default::default()
+                });
+            });
+
+        // Install or update the shared resource used by your render node
+        commands.insert_resource(LutImages {
+            texture_a: handle.clone(),
+        });
+
+        ui_state.path = path;
+        ui_state.pending = None;
     }
 }
