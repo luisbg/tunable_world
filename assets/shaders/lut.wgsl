@@ -55,14 +55,14 @@ fn sample_lut16x(lut: texture_2d<f32>, samp: sampler, c: vec3<f32>) -> vec3<f32>
 
 @fragment
 fn fragment(in: FullscreenVertexOutput) -> @location(0) vec4<f32> {
-  let base_src = textureSample(post_source_tex, post_source_sampler, in.uv).rgb;
+  let base_src = textureSample(post_source_tex, post_source_sampler, in.uv);
 
   if (params.enabled == 0u) {
-    return base;
+    return base_src;
   }
     
-  let remapped = sample_lut16x(lut_tex, lut_sampler, base_src);
+  let remapped = sample_lut16x(lut_tex, lut_sampler, base_src.rgb);
 
-  let out_rgb = mix(base_src, remapped, clamp(params.strength, 0.0, 1.0));
+  let out_rgb = mix(base_src.rgb, remapped, clamp(params.strength, 0.0, 1.0));
   return vec4<f32>(out_rgb, 1.0);
 }
