@@ -521,7 +521,7 @@ fn post_process_edit_panel(
 
                 ui.label("PNG path:");
                 let te = egui::TextEdit::singleline(&mut ui_state.path)
-                    .hint_text("luts/neutral_16.png")
+                    .hint_text("luts/lookup.png")
                     .desired_width(200.0);
                 ui.add(te);
 

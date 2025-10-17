@@ -258,7 +258,7 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     // If your PNG’s colors are authored in sRGB (typical), keep is_srgb = true
     // so Bevy converts to linear on upload; your post-pass usually runs in linear.
     let lut_handle: Handle<Image> =
-        asset_server.load_with_settings("luts/warm_16.png", |s: &mut ImageLoaderSettings| {
+        asset_server.load_with_settings("luts/lookup.png", |s: &mut ImageLoaderSettings| {
             s.is_srgb = true; // set to false only if your LUT values are already linear!
             s.sampler = ImageSampler::Descriptor(ImageSamplerDescriptor {
                 label: Some("lut_sampler".into()),
@@ -366,7 +366,7 @@ pub struct LutUiState {
 impl Default for LutUiState {
     fn default() -> Self {
         Self {
-            path: "luts/warm_16.png".to_string(),
+            path: "luts/lookup.png".to_string(),
             pending: None,
         }
     }
