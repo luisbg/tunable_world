@@ -1,9 +1,11 @@
 use bevy::{
     core_pipeline::{
+        bloom::Bloom,
         dof::{DepthOfField, DepthOfFieldMode},
         tonemapping::Tonemapping,
     },
     diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin},
+    pbr::{DistanceFog, FogFalloff},
     prelude::*,
     render::render_resource::Face,
 };
@@ -26,8 +28,19 @@ fn section(ui: &mut egui::Ui, title: &str, default_open: bool, body: impl FnOnce
 
 /// egui panel: tune post-processing effects
 pub fn post_process_edit_panel(
+    mut commands: Commands,
     mut ctxs: EguiContexts,
-    mut q_cam: Query<(&mut DepthOfField, &mut Tonemapping, &GlobalTransform), With<Camera3d>>,
+    mut q_cam: Query<
+        (
+            Entity,
+            &mut DepthOfField,
+            &mut Tonemapping,
+            &mut Bloom,
+            Option<&mut DistanceFog>,
+            &GlobalTransform,
+        ),
+        With<Camera3d>,
+    >,
     mut outline: ResMut<OutlineParams>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     (mut chroma_settings, mut crt_settings, mut gradient_tint_settings, mut lut_settings): (
@@ -38,7 +51,8 @@ pub fn post_process_edit_panel(
     ),
     mut ui_state: ResMut<LutUiState>,
 ) {
-    let Ok((mut dof, mut tonemapping, cam_xform)) = q_cam.single_mut() else {
+    let Ok((cam_e, mut dof, mut tonemapping, mut bloom, fog_opt, cam_xform)) = q_cam.single_mut()
+    else {
         return;
     };
 
@@ -216,7 +230,34 @@ pub fn post_process_edit_panel(
                         }
                     });
 
-                    section(ui, "Renderer Features", true, |ui| {
+                    section(ui, "Renderer Features", false, |ui| {
+                        // ---- Bloom ----
+                        // TODO: Bloom does nothing since our camera is not HDR
+                        let mut bloom_on = bloom.intensity > 0.0;
+                        if ui.checkbox(&mut bloom_on, "Bloom").changed() {
+                            if bloom_on && bloom.intensity == 0.0 {
+                                // Insert with sensible defaults
+                                bloom.intensity = 0.15;
+                            } else if !bloom_on && bloom.intensity > 0.0 {
+                                bloom.intensity = 0.0;
+                            }
+                        }
+
+                        // ---- Fog ----
+                        let mut fog_on = fog_opt.is_some();
+                        if ui.checkbox(&mut fog_on, "Fog").changed() {
+                            if fog_on && fog_opt.is_none() {
+                                // Basic default fog; tune later when by adding sliders.
+                                commands.entity(cam_e).insert(DistanceFog {
+                                    color: LinearRgba::from(Color::srgb(0.86, 0.90, 0.96)).into(),
+                                    falloff: FogFalloff::Exponential { density: 0.035 },
+                                    ..default()
+                                });
+                            } else if !fog_on && fog_opt.is_some() {
+                                commands.entity(cam_e).remove::<DistanceFog>();
+                            }
+                        }
+
                         // ---- Tonemapping ----
                         let mut tm_on = *tonemapping != Tonemapping::None;
                         if ui.checkbox(&mut tm_on, "Tonemapping").changed() {
