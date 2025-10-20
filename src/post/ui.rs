@@ -1,5 +1,8 @@
 use bevy::{
-    core_pipeline::dof::{DepthOfField, DepthOfFieldMode},
+    core_pipeline::{
+        dof::{DepthOfField, DepthOfFieldMode},
+        tonemapping::Tonemapping,
+    },
     diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin},
     prelude::*,
     render::render_resource::Face,
@@ -24,7 +27,7 @@ fn section(ui: &mut egui::Ui, title: &str, default_open: bool, body: impl FnOnce
 /// egui panel: tune post-processing effects
 pub fn post_process_edit_panel(
     mut ctxs: EguiContexts,
-    mut q_cam: Query<(&mut DepthOfField, &GlobalTransform), With<Camera3d>>,
+    mut q_cam: Query<(&mut DepthOfField, &mut Tonemapping, &GlobalTransform), With<Camera3d>>,
     mut outline: ResMut<OutlineParams>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     (mut chroma_settings, mut crt_settings, mut gradient_tint_settings, mut lut_settings): (
@@ -35,7 +38,7 @@ pub fn post_process_edit_panel(
     ),
     mut ui_state: ResMut<LutUiState>,
 ) {
-    let Ok((mut dof, cam_xform)) = q_cam.single_mut() else {
+    let Ok((mut dof, mut tonemapping, cam_xform)) = q_cam.single_mut() else {
         return;
     };
 
@@ -209,6 +212,18 @@ pub fn post_process_edit_panel(
 
                             if ui.button("Load").clicked() {
                                 ui_state.pending = Some(ui_state.path.clone());
+                            }
+                        }
+                    });
+
+                    section(ui, "Renderer Features", true, |ui| {
+                        // ---- Tonemapping ----
+                        let mut tm_on = *tonemapping != Tonemapping::None;
+                        if ui.checkbox(&mut tm_on, "Tonemapping").changed() {
+                            if tm_on && *tonemapping == Tonemapping::None {
+                                *tonemapping = Tonemapping::AcesFitted;
+                            } else if !tm_on {
+                                *tonemapping = Tonemapping::None;
                             }
                         }
                     });
