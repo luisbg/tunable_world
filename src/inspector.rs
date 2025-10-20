@@ -45,6 +45,7 @@ pub enum SpawnKind {
     Cuboid,
     Sphere,
     Plane,
+    Prism,
 }
 
 // ========== Scene JSON format ==========
@@ -553,6 +554,7 @@ fn inspector_window(
                 ui.selectable_value(&mut state.spawn_kind, SpawnKind::Cuboid, "Cuboid");
                 ui.selectable_value(&mut state.spawn_kind, SpawnKind::Sphere, "Sphere");
                 ui.selectable_value(&mut state.spawn_kind, SpawnKind::Plane, "Plane");
+                ui.selectable_value(&mut state.spawn_kind, SpawnKind::Prism, "Prism");
             });
             if ui.button("Add object at (0,0,0)").clicked() {
                 // Remove previous Selected tag (single-select)
@@ -564,6 +566,14 @@ fn inspector_window(
                     SpawnKind::Cuboid => meshes.add(Mesh::from(Cuboid::new(1.0, 1.0, 1.0))),
                     SpawnKind::Sphere => meshes.add(Mesh::from(Sphere::new(0.5))),
                     SpawnKind::Plane => meshes.add(Mesh::from(Plane3d::default())),
+                    SpawnKind::Prism => meshes.add(Extrusion::new(
+                        Triangle2d::new(
+                            Vec2::new(0.0, 1.0),
+                            Vec2::new(0.0, 0.0),
+                            Vec2::new(1.0, 0.0),
+                        ),
+                        1.0,
+                    )),
                 };
                 // Simple default material
                 let mat = materials.add(StandardMaterial {
@@ -587,6 +597,7 @@ fn inspector_window(
                             SpawnKind::Cuboid => "Cuboid",
                             SpawnKind::Sphere => "Sphere",
                             SpawnKind::Plane => "Plane",
+                            SpawnKind::Prism => "Prism",
                         }),
                     ))
                     .id();
@@ -823,6 +834,19 @@ fn load_scene_system(
                     meshes.add(Mesh::from(Sphere::new(0.5))),
                     EditableMesh {
                         kind: SpawnKind::Sphere,
+                    },
+                ),
+                SpawnKind::Prism => (
+                    meshes.add(Extrusion::new(
+                        Triangle2d::new(
+                            Vec2::new(0.0, 1.0),
+                            Vec2::new(0.0, 0.0),
+                            Vec2::new(1.0, 0.0),
+                        ),
+                        1.0,
+                    )),
+                    EditableMesh {
+                        kind: SpawnKind::Prism,
                     },
                 ),
             };
