@@ -1,3 +1,6 @@
+#![allow(clippy::too_many_arguments)]
+#![allow(clippy::type_complexity)]
+
 use bevy::{
     diagnostic::FrameTimeDiagnosticsPlugin,
     math::primitives::{Cuboid, Plane3d, Sphere},

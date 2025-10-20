@@ -1,5 +1,4 @@
 use bevy::input::mouse::MouseButtonInput;
-use bevy::math::Vec3A;
 use bevy::prelude::*;
 use bevy::render::primitives::Aabb;
 use bevy_egui::{EguiContexts, EguiPrimaryContextPass, egui};
@@ -40,16 +39,12 @@ struct InspectorState {
     spawn_kind: SpawnKind,
 }
 
-#[derive(Copy, Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Copy, Clone, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub enum SpawnKind {
+    #[default]
     Cuboid,
     Sphere,
     Plane,
-}
-impl Default for SpawnKind {
-    fn default() -> Self {
-        SpawnKind::Cuboid
-    }
 }
 
 // ========== Scene JSON format ==========
@@ -157,7 +152,7 @@ fn aabb_world(local: Aabb, global: &GlobalTransform) -> Aabb {
     let t = aff.translation; // Vec3A
 
     // Original center/half-extents
-    let c_local = Vec3A::from(local.center);
+    let c_local = local.center;
     let he = local.half_extents;
 
     // World center: R*S*c + t
@@ -174,7 +169,7 @@ fn aabb_world(local: Aabb, global: &GlobalTransform) -> Aabb {
     );
 
     Aabb {
-        center: c_world.into(),
+        center: c_world,
         half_extents: he_world.into(),
     }
 }
@@ -238,7 +233,7 @@ fn pick_on_click(
 
             if let Some(t) = ray_aabb_intersection(origin, *dir, min.into(), max.into()) {
                 // Keep the nearest hit
-                if best_hit.map_or(true, |(_, best_t)| t < best_t) {
+                if best_hit.is_none_or(|(_, best_t)| t < best_t) {
                     best_hit = Some((e, t));
                 }
             }
@@ -361,7 +356,7 @@ fn inspector_window(
 
             // Header
             if let Some(entity) = selected_entity {
-                ui.label(format!("Selected: {:?}", entity));
+                ui.label(format!("Selected: {entity:?}"));
             } else {
                 ui.weak("No object selected");
             }
@@ -665,7 +660,7 @@ fn inspector_window(
                 let mut ecmd = commands.spawn((
                     mesh3d.clone(),
                     MeshMaterial3d(new_mat_handle),
-                    tf.clone(),
+                    *tf,
                     Editable,
                     Selected,
                     Name::new(new_name),
