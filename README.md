@@ -4,6 +4,8 @@ An experimental scene editor and post-processing playground built with <a href="
 Real-time tweakable shaders, atmospheric lighting, and Egui-driven visual editing.
 </p>
 
+![A screenshot of TuneWorld in action](https://github.com/luisbg/tunable_world/raw/main/assets/screenshots/0.png)
+
 <p align="center">
   <a href="https://bevyengine.org/">Bevy 0.16</a> •
   <a href="https://wgpu.rs/">wgpu</a> •
