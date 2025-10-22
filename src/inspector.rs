@@ -44,6 +44,10 @@ struct InspectorState {
     spawn_kind: SpawnKind,
 }
 
+/// Author-only collider box (no mesh). Drawn as gizmo in editor; exported to physics for games.
+#[derive(Component, Copy, Clone)]
+pub struct ColliderBox;
+
 #[derive(Copy, Clone, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub enum SpawnKind {
     #[default]
@@ -51,6 +55,7 @@ pub enum SpawnKind {
     Sphere,
     Plane,
     Prism,
+    ColliderBox,
 }
 
 // ========== Scene JSON format ==========
@@ -100,6 +105,7 @@ impl Plugin for InspectorPlugin {
                     save_scene_system,
                     load_scene_system,
                     highlight_selected_gizmos,
+                    draw_collider_gizmos,
                 ),
             )
             .add_systems(EguiPrimaryContextPass, inspector_window);
@@ -181,6 +187,31 @@ fn aabb_world(local: Aabb, global: &GlobalTransform) -> Aabb {
     }
 }
 
+/// Convert an OBB (Transform + local half-extents) to a world-space AABB.
+/// Accounts for rotation and non-uniform scale.
+fn obb_to_world_aabb(tf: Transform, half_extents_local: Vec3) -> Aabb {
+    // Apply (absolute) scaling to the local half-extents first
+    let he = half_extents_local * tf.scale.abs();
+
+    // Rotation matrix from the transform
+    let m = Mat3::from_quat(tf.rotation);
+    let x = m.x_axis; // column 0
+    let y = m.y_axis; // column 1
+    let z = m.z_axis; // column 2
+
+    // World half-extents are the sum of |axis components| * local half-extent along that axis
+    let he_world = Vec3::new(
+        x.x.abs() * he.x + y.x.abs() * he.y + z.x.abs() * he.z,
+        x.y.abs() * he.x + y.y.abs() * he.y + z.y.abs() * he.z,
+        x.z.abs() * he.x + y.z.abs() * he.y + z.z.abs() * he.z,
+    );
+
+    Aabb {
+        center: tf.translation.into(),
+        half_extents: he_world.into(),
+    }
+}
+
 /// On left-click in the 3D viewport, cast a ray and select the closest hit Editable entity.
 fn pick_on_click(
     mut ev_mousebtn: EventReader<MouseButtonInput>,
@@ -192,6 +223,7 @@ fn pick_on_click(
     q_editables: Query<(Entity, &GlobalTransform, &Aabb), With<Editable>>,
     mut egui_ctxs: EguiContexts,
     mut edit_state: ResMut<SceneEditState>,
+    q_cb: Query<(Entity, &Transform, &ColliderBox), With<Editable>>,
 ) {
     // Only act on left button press events
     let clicked = ev_mousebtn
@@ -240,6 +272,23 @@ fn pick_on_click(
             let max = world_aabb.center + world_aabb.half_extents;
 
             if let Some(t) = ray_aabb_intersection(origin, *dir, min.into(), max.into()) {
+                // Keep the nearest hit
+                if best_hit.is_none_or(|(_, best_t)| t < best_t) {
+                    best_hit = Some((e, t));
+                }
+            }
+        }
+
+        // Also test against author-only ColliderBox entities (no mesh)
+        for (e, tf, _cb) in &q_cb {
+            let he = Vec3::splat(1.0);
+            let aabb = obb_to_world_aabb(*tf, he);
+            if let Some(t) = ray_aabb_intersection(
+                origin,
+                *dir,
+                (aabb.center - aabb.half_extents).into(),
+                (aabb.center + aabb.half_extents).into(),
+            ) {
                 // Keep the nearest hit
                 if best_hit.is_none_or(|(_, best_t)| t < best_t) {
                     best_hit = Some((e, t));
@@ -601,8 +650,26 @@ fn inspector_window(
                 ui.selectable_value(&mut state.spawn_kind, SpawnKind::Sphere, "Sphere");
                 ui.selectable_value(&mut state.spawn_kind, SpawnKind::Plane, "Plane");
                 ui.selectable_value(&mut state.spawn_kind, SpawnKind::Prism, "Prism");
+                ui.selectable_value(&mut state.spawn_kind, SpawnKind::ColliderBox, "ColliderBox");
             });
             if ui.button("Add object at (0,0,0)").clicked() {
+                if matches!(state.spawn_kind, SpawnKind::ColliderBox) {
+                    let e = commands
+                        .spawn((
+                            Editable,
+                            Name::new("Bounds Collider"),
+                            Transform::from_translation(Vec3::ZERO),
+                            ColliderBox,
+                        ))
+                        .id();
+                    let newly_selected = Some(e);
+                    state.selected = newly_selected;
+                    state.window_open = true;
+                    state.cache_initialized = false;
+                    state.last_selected = newly_selected;
+                    return; // skip mesh path
+                }
+
                 // Remove previous Selected tag (single-select)
                 if let Ok(prev) = q_selected.single() {
                     commands.entity(prev).remove::<Selected>();
@@ -620,6 +687,8 @@ fn inspector_window(
                         ),
                         1.0,
                     )),
+                    // This branch should never happen
+                    SpawnKind::ColliderBox => meshes.add(Mesh::from(Sphere::new(0.0))),
                 };
                 // Simple default material
                 let mat = materials.add(StandardMaterial {
@@ -645,6 +714,7 @@ fn inspector_window(
                             SpawnKind::Sphere => "Sphere",
                             SpawnKind::Plane => "Plane",
                             SpawnKind::Prism => "Prism",
+                            SpawnKind::ColliderBox => "ColliderBox",
                         }),
                     ))
                     .id();
@@ -786,6 +856,7 @@ fn save_scene_system(
         ),
         With<Editable>,
     >,
+    q_cb: Query<(&Name, &Transform, &ColliderBox), With<Editable>>,
     materials: Res<Assets<StandardMaterial>>,
 ) {
     if ev.is_empty() {
@@ -793,6 +864,7 @@ fn save_scene_system(
     }
     for _ in ev.read() {
         let mut objects = Vec::new();
+        // Save standard mesh objects
         for (name, tf, _mesh, mat_h, mesh_info) in q_edit.iter() {
             let (rx, ry, rz) = tf.rotation.to_euler(EulerRot::XYZ);
 
@@ -820,6 +892,22 @@ fn save_scene_system(
                 collider: mesh_info.unwrap().collider,
             });
         }
+        // Save colliders
+        for (name, tf, _cb) in q_cb.iter() {
+            let (rx, ry, rz) = tf.rotation.to_euler(EulerRot::XYZ);
+            objects.push(SceneObject {
+                name: Some(name.to_string()),
+                kind: SpawnKind::ColliderBox,
+                position: [tf.translation.x, tf.translation.y, tf.translation.z],
+                rotation_euler_deg: [rx.to_degrees(), ry.to_degrees(), rz.to_degrees()],
+                scale: [tf.scale.x, tf.scale.y, tf.scale.z],
+                color_rgba: [0.0, 0.0, 0.0, 0.0],
+                metallic: 0.0,
+                roughness: 0.0,
+                collider: Some(true),
+            });
+        }
+
         let doc = SceneDoc {
             version: 1,
             objects,
@@ -873,6 +961,24 @@ fn load_scene_system(
         }
 
         for obj in doc.objects {
+            // Handle ColliderBox (author-only, no render mesh)
+            if matches!(obj.kind, SpawnKind::ColliderBox) {
+                let tf = Transform {
+                    translation: Vec3::new(obj.position[0], obj.position[1], obj.position[2]),
+                    rotation: Quat::from_euler(
+                        EulerRot::XYZ,
+                        obj.rotation_euler_deg[0].to_radians(),
+                        obj.rotation_euler_deg[1].to_radians(),
+                        obj.rotation_euler_deg[2].to_radians(),
+                    ),
+                    scale: Vec3::new(obj.scale[0], obj.scale[1], obj.scale[2]),
+                };
+                let mut ecmd = commands.spawn((tf, Editable, ColliderBox));
+                if let Some(name) = obj.name.clone() {
+                    ecmd.insert(Name::new(name));
+                }
+                continue;
+            }
             // Mesh: support Cube, Cuboid, Plane, Sphere
             let (mesh_h, mesh_info) = match obj.kind {
                 SpawnKind::Cuboid => (
@@ -910,6 +1016,8 @@ fn load_scene_system(
                         collider: obj.collider,
                     },
                 ),
+                // Making the compiler happy
+                SpawnKind::ColliderBox => todo!(),
             };
 
             // Material: color + PBR params; enable blending if alpha < 1
@@ -983,5 +1091,11 @@ fn highlight_selected_gizmos(
         gizmos.ray(p, Vec3::X * axis_len, Color::srgb(1.0, 0.0, 0.0));
         gizmos.ray(p, Vec3::Y * axis_len, Color::srgb(0.0, 1.0, 0.0));
         gizmos.ray(p, Vec3::Z * axis_len, Color::srgb(0.0, 0.0, 1.0));
+    }
+}
+
+fn draw_collider_gizmos(mut gizmos: Gizmos, q: Query<(&Transform, &ColliderBox), With<Editable>>) {
+    for (tf, _cb) in &q {
+        gizmos.cuboid(*tf, Color::srgb(0.95, 0.45, 0.1));
     }
 }
