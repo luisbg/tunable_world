@@ -42,11 +42,20 @@ struct InspectorState {
     cache_initialized: bool,
     // Choice for object creation
     spawn_kind: SpawnKind,
+    cb_display: ColliderDisplay,
 }
 
 /// Author-only collider box (no mesh). Drawn as gizmo in editor; exported to physics for games.
 #[derive(Component, Copy, Clone)]
 pub struct ColliderBox;
+
+#[derive(Copy, Clone, Default, Eq, PartialEq)]
+pub enum ColliderDisplay {
+    #[default]
+    Wireframe,
+    Ghost,
+    Hidden,
+}
 
 #[derive(Copy, Clone, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub enum SpawnKind {
@@ -356,6 +365,7 @@ fn inspector_window(
     )>,
 
     mut edit_state: ResMut<SceneEditState>,
+    q_cb_ro: Query<&ColliderBox>,
 ) {
     // We now allow the inspector to be open even when nothing is selected.
     let selected_entity = state.selected;
@@ -575,6 +585,37 @@ fn inspector_window(
                     }
                 });
             });
+
+            // ColliderBox inspector
+            if let Some(entity) = selected_entity {
+                if let Ok(_cb_ro) = q_cb_ro.get(entity) {
+                    ui.separator();
+                    ui.heading("Collider Box");
+                    egui::ComboBox::from_label("Display")
+                        .selected_text(match state.cb_display {
+                            ColliderDisplay::Wireframe => "Wireframe",
+                            ColliderDisplay::Ghost => "Ghost",
+                            ColliderDisplay::Hidden => "Hidden",
+                        })
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(
+                                &mut state.cb_display,
+                                ColliderDisplay::Wireframe,
+                                "Wireframe",
+                            );
+                            ui.selectable_value(
+                                &mut state.cb_display,
+                                ColliderDisplay::Ghost,
+                                "Ghost",
+                            );
+                            ui.selectable_value(
+                                &mut state.cb_display,
+                                ColliderDisplay::Hidden,
+                                "Hidden",
+                            );
+                        });
+                }
+            }
 
             ui.add_enabled_ui(controls_enabled, |ui| {
                 ui.separator();
@@ -1094,8 +1135,20 @@ fn highlight_selected_gizmos(
     }
 }
 
-fn draw_collider_gizmos(mut gizmos: Gizmos, q: Query<(&Transform, &ColliderBox), With<Editable>>) {
+fn draw_collider_gizmos(
+    mut gizmos: Gizmos,
+    q: Query<(&Transform, &ColliderBox), With<Editable>>,
+    state: Res<InspectorState>,
+) {
     for (tf, _cb) in &q {
-        gizmos.cuboid(*tf, Color::srgb(0.95, 0.45, 0.1));
+        match state.cb_display {
+            ColliderDisplay::Hidden => {}
+            ColliderDisplay::Wireframe => {
+                gizmos.cuboid(*tf, Color::srgb(0.95, 0.45, 0.1));
+            }
+            ColliderDisplay::Ghost => {
+                gizmos.cuboid(*tf, Color::srgba(0.95, 0.45, 0.1, 0.25));
+            }
+        }
     }
 }
