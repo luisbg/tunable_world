@@ -187,6 +187,7 @@ fn pick_on_click(
     q_selected: Query<Entity, With<Selected>>,
     q_editables: Query<(Entity, &GlobalTransform, &Aabb), With<Editable>>,
     mut egui_ctxs: EguiContexts,
+    mut edit_state: ResMut<SceneEditState>,
 ) {
     // Only act on left button press events
     let clicked = ev_mousebtn
@@ -260,6 +261,10 @@ fn pick_on_click(
             if selection_changed {
                 state.cache_initialized = false;
                 state.last_selected = newly_selected;
+            }
+
+            if !edit_state.open {
+                edit_state.open = true;
             }
 
             return;
