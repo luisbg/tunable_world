@@ -72,6 +72,7 @@ fn main() {
                 orbit_camera_rotate_continuous.in_set(OrbitSet::Pose),
                 lut_apply_pending,
                 space_closes_scene_inspector,
+                esc_quits_app,
             ),
         )
         .run();
@@ -289,5 +290,12 @@ fn spawn_scene(
 fn space_closes_scene_inspector(kb: Res<ButtonInput<KeyCode>>, mut state: ResMut<SceneEditState>) {
     if kb.just_pressed(KeyCode::Space) {
         state.open = !state.open;
+    }
+}
+
+/// Quit the whole app on Escape.
+fn esc_quits_app(kb: Res<ButtonInput<KeyCode>>, mut exit: EventWriter<bevy::app::AppExit>) {
+    if kb.just_pressed(KeyCode::Escape) {
+        exit.write(bevy::app::AppExit::Success);
     }
 }
