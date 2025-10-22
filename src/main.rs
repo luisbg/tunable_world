@@ -176,6 +176,7 @@ fn spawn_scene(
         Name::new("BaseGround"),
         EditableMesh {
             kind: SpawnKind::Plane,
+            collider: Some(true),
         },
     ));
 
@@ -281,6 +282,7 @@ fn spawn_scene(
         Editable,
         EditableMesh {
             kind: SpawnKind::Cuboid,
+            collider: Some(true),
         },
         Name::new("Water"),
     ));

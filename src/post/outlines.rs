@@ -33,7 +33,10 @@ pub fn spawn_outlined(
             MeshMaterial3d(material.clone()),
             transform,
             Editable,
-            EditableMesh { kind },
+            EditableMesh {
+                kind,
+                collider: Some(false),
+            },
             Name::new(name.to_string()),
         ))
         .id();

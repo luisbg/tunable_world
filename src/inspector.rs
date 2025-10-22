@@ -19,6 +19,7 @@ pub struct Selected;
 #[derive(Component, Clone, Copy, Serialize, Deserialize)]
 pub struct EditableMesh {
     pub kind: SpawnKind,
+    pub collider: Option<bool>,
 }
 
 /// Keeps UI state and the currently selected entity.
@@ -33,6 +34,8 @@ struct InspectorState {
     color_srgba: egui::Color32,
     metallic: f32,
     roughness: f32,
+    // Physics settings
+    collider: Option<bool>,
     window_open: bool,
     // Whether the pos/scale cache reflects the currently selected entity.
     // When selection changes, we set this to false so the inspector reloads values.
@@ -67,6 +70,7 @@ struct SceneObject {
     color_rgba: [f32; 4],
     metallic: f32,
     roughness: f32,
+    collider: Option<bool>,
 }
 
 #[derive(Resource, Default)]
@@ -298,6 +302,8 @@ fn inspector_window(
             &MeshMaterial3d<StandardMaterial>,
             Option<&EditableMesh>,
         )>,
+        Query<&EditableMesh>,
+        Query<&mut EditableMesh>,
     )>,
 
     mut edit_state: ResMut<SceneEditState>,
@@ -332,6 +338,10 @@ fn inspector_window(
                     state.metallic = mat.metallic;
                     state.roughness = mat.perceptual_roughness;
                 }
+            }
+            // Sync collider flag from component (if present)
+            if let Ok(em) = ps_tf_dup.p2().get(entity) {
+                state.collider = em.collider;
             }
             state.cache_initialized = true;
             state.window_open = true;
@@ -468,6 +478,7 @@ fn inspector_window(
                         }
                     });
 
+                    ui.separator();
                     ui.vertical(|ui| {
                         ui.heading("Material");
                         ui.label("Metallic");
@@ -479,6 +490,31 @@ fn inspector_window(
                             egui::Slider::new(&mut state.roughness, 0.0..=1.0).fixed_decimals(3),
                         );
                     });
+
+                    ui.vertical(|ui| {
+                        ui.heading("Physics");
+                        ui.label("Collider");
+                        egui::ComboBox::from_label("")
+                            .selected_text(match state.collider {
+                                Some(true) => "On",
+                                Some(false) => "Off",
+                                None => "Unset",
+                            })
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(
+                                    &mut state.collider,
+                                    Some(true),
+                                    "On (collider)",
+                                );
+                                ui.selectable_value(
+                                    &mut state.collider,
+                                    Some(false),
+                                    "Off (no collider)",
+                                );
+                                ui.selectable_value(&mut state.collider, None, "Unset / default");
+                            });
+                    });
+
                     // Apply material changes immediately
                     if let Some(e) = state.selected {
                         if let Ok(h) = q_mat.get(e) {
@@ -601,6 +637,7 @@ fn inspector_window(
                         Editable,
                         EditableMesh {
                             kind: state.spawn_kind,
+                            collider: None,
                         },
                         Selected,
                         Name::new(match state.spawn_kind {
@@ -653,6 +690,10 @@ fn inspector_window(
                     mat.metallic = state.metallic.clamp(0.0, 1.0);
                     mat.perceptual_roughness = state.roughness.clamp(0.0, 1.0);
                 }
+            }
+            // Keep collider flag in sync with UI
+            if let Ok(mut em) = ps_tf_dup.p3().get_mut(entity) {
+                em.collider = state.collider;
             }
         }
     } else {
@@ -776,6 +817,7 @@ fn save_scene_system(
                 color_rgba,
                 metallic,
                 roughness,
+                collider: mesh_info.unwrap().collider,
             });
         }
         let doc = SceneDoc {
@@ -837,18 +879,21 @@ fn load_scene_system(
                     meshes.add(Mesh::from(Cuboid::new(1.0, 1.0, 1.0))),
                     EditableMesh {
                         kind: SpawnKind::Cuboid,
+                        collider: obj.collider,
                     },
                 ),
                 SpawnKind::Plane => (
                     meshes.add(Mesh::from(Plane3d::default())),
                     EditableMesh {
                         kind: SpawnKind::Plane,
+                        collider: obj.collider,
                     },
                 ),
                 SpawnKind::Sphere => (
                     meshes.add(Mesh::from(Sphere::new(0.5))),
                     EditableMesh {
                         kind: SpawnKind::Sphere,
+                        collider: obj.collider,
                     },
                 ),
                 SpawnKind::Prism => (
@@ -862,6 +907,7 @@ fn load_scene_system(
                     )),
                     EditableMesh {
                         kind: SpawnKind::Prism,
+                        collider: obj.collider,
                     },
                 ),
             };
