@@ -5,6 +5,8 @@ use bevy_egui::{EguiContexts, EguiPrimaryContextPass, egui};
 use serde::{Deserialize, Serialize};
 use std::fs::{read_to_string, write};
 
+use crate::SceneEditState;
+
 /// Tag any entity you want to be clickable/editable.
 #[derive(Component)]
 pub struct Editable;
@@ -292,6 +294,8 @@ fn inspector_window(
             Option<&EditableMesh>,
         )>,
     )>,
+
+    mut edit_state: ResMut<SceneEditState>,
 ) {
     // We now allow the inspector to be open even when nothing is selected.
     let selected_entity = state.selected;
@@ -347,7 +351,8 @@ fn inspector_window(
     }
 
     let ctx = egui_ctxs.ctx_mut().expect("single egui context");
-    let mut open = state.window_open;
+    let mut open = edit_state.open && state.window_open;
+    let was_open = open;
     egui::Window::new("Object Inspector")
         .open(&mut open)
         .resizable(true)
@@ -609,6 +614,11 @@ fn inspector_window(
                 state.last_selected = newly_selected;
             }
         });
+
+    // If X at top-right of the egui window is clicked, hide the UI
+    if was_open && !open {
+        edit_state.open = false;
+    }
 
     // Apply changes live while open
     if open {

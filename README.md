@@ -65,6 +65,7 @@ assets/
 | ** 1 / 2 / 3 / 4** | Move camera to N/S/W/E coordinates |
 | **Q / E** | Move camera to prev/next coordinate |
 | **A / D** | Rotate camera smoothly |
+| Spacebar | Show and hides the Inspector UI |
 
 Click on any object to select it (and have the Inspector UI appear).
 In the Inspector UI scenes can be saved and loaded from JSON files.
@@ -126,6 +127,10 @@ Each effect runs as an independent plugin with its own uniforms and render node 
 - [ ] Preset gallery (CRT, chromatic aberration, vignette)
 - [ ] Select object groups in the Inspector (to move or copy in bulk)
 - [ ] Add more shaders/effects
+- [ ] Exit with Escape key
+- [ ] Add alpha values in the Gradient Tint effect
+- [ ] Make material on sides of a Cuboid different than the top face
+- [ ] Add cylinder objects
 
 ---
 

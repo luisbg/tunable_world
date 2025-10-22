@@ -11,6 +11,7 @@ use bevy::{
 };
 use bevy_egui::{EguiContexts, egui};
 
+use crate::SceneEditState;
 use crate::camera::{FpsText, FpsUpdate};
 use crate::post::{
     chroma_aberration::ChromaAberrationSettings,
@@ -49,7 +50,9 @@ pub fn post_process_edit_panel(
         Query<&mut GradientTintSettings>,
         Query<&mut LutSettings>,
     ),
+
     mut ui_state: ResMut<LutUiState>,
+    mut edit_state: ResMut<SceneEditState>,
 ) {
     let Ok((cam_e, mut dof, mut tonemapping, mut bloom, fog_opt, cam_xform)) = q_cam.single_mut()
     else {
@@ -67,6 +70,7 @@ pub fn post_process_edit_panel(
 
     // --- Effect Settings window (collapsible sections)
     egui::Window::new("Effect settings")
+        .open(&mut edit_state.open)
         .default_width(300.0)
         .show(ctxs.ctx_mut().expect("single egui context"), |ui| {
             egui::ScrollArea::vertical()

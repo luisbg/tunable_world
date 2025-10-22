@@ -26,6 +26,18 @@ use crate::post::lut::{LutPlugin, lut_apply_pending};
 use crate::post::outlines::{OutlineParams, OutlineShell, spawn_outlined, update_outlines};
 use crate::post::ui::{post_process_edit_panel, setup_fps_text, update_fps_text};
 
+/// Global UI state for toggling panels like the Inspector.
+#[derive(Resource)]
+pub struct SceneEditState {
+    pub open: bool,
+}
+
+impl Default for SceneEditState {
+    fn default() -> Self {
+        Self { open: true }
+    }
+}
+
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins.set(WindowPlugin {
@@ -45,6 +57,7 @@ fn main() {
         // UI plugin (egui)
         .add_plugins(EguiPlugin::default())
         .add_plugins(InspectorPlugin)
+        .init_resource::<SceneEditState>()
         .add_systems(Startup, (spawn_camera, spawn_light, spawn_scene))
         .add_systems(PostStartup, setup_fps_text)
         .add_systems(EguiPrimaryContextPass, post_process_edit_panel)
@@ -58,6 +71,7 @@ fn main() {
                 orbit_snap_to_index.in_set(OrbitSet::Pose),
                 orbit_camera_rotate_continuous.in_set(OrbitSet::Pose),
                 lut_apply_pending,
+                space_closes_scene_inspector,
             ),
         )
         .run();
@@ -269,4 +283,11 @@ fn spawn_scene(
         },
         Name::new("Water"),
     ));
+}
+
+/// Hide the Scene Editor UI when Spacebar is pressed.
+fn space_closes_scene_inspector(kb: Res<ButtonInput<KeyCode>>, mut state: ResMut<SceneEditState>) {
+    if kb.just_pressed(KeyCode::Space) {
+        state.open = !state.open;
+    }
 }
