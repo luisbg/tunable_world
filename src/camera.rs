@@ -16,6 +16,11 @@ use crate::post::{
 // Rotation speed (radians per second). ~0.8 rad/s ≈ 45.8°/s.
 const ANGULAR_SPEED: f32 = 0.8;
 
+const CAMERA_PITCH_SNAPBACK_DUR: f32 = 0.25;
+const CAMERA_PITCH_CHANGE_SPEED: f32 = 0.20;
+// const CAMERA_PITCH: f32 = 0.6154797_f32; // arcsin(1/√3) ≈ 0.6154797 rad ≈ 35.26439°
+const CAMERA_PITCH: f32 = std::f32::consts::FRAC_PI_6;
+
 #[derive(Component)]
 pub struct FpsText;
 
@@ -36,12 +41,19 @@ pub struct OrbitCamera {
     yaw_offset_rad: f32,
     // Continuous offset modified by A/D
     yaw_extra_rad: f32,
+    pitch: f32,
 }
 
 #[derive(SystemSet, Debug, Hash, PartialEq, Eq, Clone)]
 pub enum OrbitSet {
     Input, // read keyboard; mutate state
     Pose,  // compute and write Transform once
+}
+
+#[derive(Component)]
+pub struct PitchReset {
+    timer: Timer,
+    start: f32,
 }
 
 /// Camera with bloom, filmic tonemapping, gentle DoF-like vibe.
@@ -99,6 +111,7 @@ pub fn spawn_camera(mut commands: Commands) {
             index_4: 0,                                  // 0..3 → 1:30, 4:30, 7:30, 10:30
             yaw_offset_rad: std::f32::consts::FRAC_PI_4, // 45°
             yaw_extra_rad: 0.0,
+            pitch: CAMERA_PITCH,
         },
         Name::new("MainCamera"),
     ));
@@ -118,9 +131,13 @@ pub fn orbit_snap_to_index(mut q_cam: Query<(&mut Transform, &mut OrbitCamera), 
         // Current distance from target
         let offset = tf.translation - target;
         let dist = offset.length().max(0.0001);
-        let y = offset.y; // keep current height
-        // radial distance in XZ required to preserve the same 3D distance
-        let r_xy = (dist * dist - y * y).max(0.0).sqrt();
+
+        // Apply pitch to compute vertical elevation and horizontal radius
+        let pitch = ocam.pitch;
+        // Interpret pitch as elevation above the XZ plane (radians)
+        let y = dist * pitch.sin();
+        // Horizontal radius (projected onto the XZ plane)
+        let r_xy = (dist * pitch.cos()).abs();
 
         // Diagonals: base at 45 degress then 90 degree steps → 1:30, 4:30, 7:30, 10:30
         let angle = ocam.yaw_offset_rad
@@ -236,5 +253,61 @@ pub fn orbit_camera_rotate_continuous(
         let pos = Vec3::new(x, y, z) + target;
 
         *tf = Transform::from_translation(pos).looking_at(target, Vec3::Y);
+    }
+}
+
+pub fn camera_pitch_controls(
+    mut commands: Commands,
+    time: Res<Time>,
+    keys: Res<ButtonInput<KeyCode>>,
+    mut q: Query<(Entity, &mut OrbitCamera), With<Camera3d>>,
+    mut reset_q: Query<&mut PitchReset>,
+) {
+    let Ok((cam_entity, mut rig)) = q.single_mut() else {
+        return;
+    };
+
+    let mut dp = 0.0;
+
+    // Tilt: W/S
+    if keys.pressed(KeyCode::KeyW) {
+        dp += 1.0;
+    }
+    if keys.pressed(KeyCode::KeyS) {
+        dp -= 1.0;
+    }
+
+    if dp != 0.0 {
+        rig.pitch += dp * CAMERA_PITCH_CHANGE_SPEED / 60.0; // tweak speed; or use Time if you prefer
+
+        // Cancel reset if player starts tilting again
+        if reset_q.get_mut(cam_entity).is_ok() {
+            commands.entity(cam_entity).remove::<PitchReset>();
+        }
+    }
+
+    // Clamp pitch to sane range (side view parallel to the ground, straight down perpendicular to the ground)
+    rig.pitch = rig.pitch.clamp(0.0, std::f32::consts::FRAC_PI_2);
+
+    // Snap back to default pitch when key released
+    if keys.just_released(KeyCode::KeyW) || keys.just_released(KeyCode::KeyS) {
+        commands.entity(cam_entity).insert(PitchReset {
+            timer: Timer::from_seconds(CAMERA_PITCH_SNAPBACK_DUR, TimerMode::Once),
+            start: rig.pitch,
+        });
+    }
+
+    // If reset is active, interpolate back to default
+    if let Ok(mut reset) = reset_q.get_mut(cam_entity) {
+        reset.timer.tick(time.delta());
+        let t = (reset.timer.elapsed_secs() / reset.timer.duration().as_secs_f32()).clamp(0.0, 1.0);
+
+        // Smoothstep easing
+        let t_smooth = t * t * t;
+        rig.pitch = reset.start.lerp(CAMERA_PITCH, t_smooth);
+
+        if reset.timer.finished() {
+            commands.entity(cam_entity).remove::<PitchReset>();
+        }
     }
 }

@@ -15,8 +15,8 @@ mod inspector;
 mod post;
 
 use crate::camera::{
-    OrbitSet, orbit_camera_hotkeys, orbit_camera_rotate_continuous, orbit_snap_to_index,
-    spawn_camera,
+    OrbitSet, camera_pitch_controls, orbit_camera_hotkeys, orbit_camera_rotate_continuous,
+    orbit_snap_to_index, spawn_camera,
 };
 use crate::inspector::{Editable, EditableMesh, InspectorPlugin, SpawnKind};
 use crate::post::chroma_aberration::ChromaAberrationPlugin;
@@ -67,13 +67,20 @@ fn main() {
             (
                 update_outlines,
                 update_fps_text,
-                orbit_camera_hotkeys.in_set(OrbitSet::Input),
-                orbit_snap_to_index.in_set(OrbitSet::Pose),
-                orbit_camera_rotate_continuous.in_set(OrbitSet::Pose),
                 lut_apply_pending,
                 space_closes_scene_inspector,
                 esc_quits_app,
             ),
+        )
+        .add_systems(
+            Update,
+            (
+                orbit_camera_hotkeys.in_set(OrbitSet::Input),
+                camera_pitch_controls.in_set(OrbitSet::Pose),
+                orbit_snap_to_index.in_set(OrbitSet::Pose),
+                orbit_camera_rotate_continuous.in_set(OrbitSet::Pose),
+            )
+                .chain(),
         )
         .run();
 }

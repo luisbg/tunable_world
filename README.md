@@ -65,6 +65,7 @@ assets/
 | ** 1 / 2 / 3 / 4** | Move camera to N/S/W/E coordinates |
 | **Q / E** | Move camera to prev/next coordinate |
 | **A / D** | Rotate camera smoothly |
+| **W / S** | Tilt camera up or down |
 | Spacebar | Show and hides the Inspector UI |
 | Esc | Quit the application |
 
@@ -122,7 +123,7 @@ Each effect runs as an independent plugin with its own uniforms and render node 
 ## Roadmap
 
 - [ ] Add sliders for Bloom and Tone Mapping parameters  
-- [ ] Tilt/move camera up and down for better view
+- [x] Tilt/move camera up and down for better view
 - [ ] Edit emissive material property in the material editor inside the Inspector
 - [ ] Scene save/load as serialized binary files  
 - [ ] Preset gallery (CRT, chromatic aberration, vignette)
