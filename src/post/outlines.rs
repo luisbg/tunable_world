@@ -1,5 +1,6 @@
 use bevy::pbr::NotShadowCaster;
 use bevy::prelude::*;
+use bevy_rapier3d::prelude::Collider;
 
 use crate::inspector::{Editable, EditableMesh, SpawnKind};
 
@@ -50,6 +51,7 @@ pub fn spawn_outlined(
             NotShadowCaster,
             OutlineShell,
             Name::new(format!("{name}_Outline")),
+            Collider::cuboid(0.5, 0.5, 0.5),
         ));
     });
 
