@@ -9,9 +9,11 @@ use bevy::{
     render::render_resource::Face,
 };
 use bevy_egui::{EguiPlugin, EguiPrimaryContextPass};
+use bevy_rapier3d::prelude::*;
 
 mod camera;
 mod inspector;
+mod player;
 mod post;
 
 use crate::camera::{
@@ -19,6 +21,7 @@ use crate::camera::{
     orbit_snap_to_index, spawn_camera,
 };
 use crate::inspector::{Editable, EditableMesh, InspectorPlugin, SpawnKind};
+use crate::player::{Player, player_input, player_move, spawn_player};
 use crate::post::chroma_aberration::ChromaAberrationPlugin;
 use crate::post::crt::CRTPlugin;
 use crate::post::gradient_tint::GradientTintPlugin;
@@ -50,6 +53,7 @@ fn main() {
         .add_plugins((
             FrameTimeDiagnosticsPlugin::default(), // collects fps and frame time
         ))
+        .add_plugins(RapierPhysicsPlugin::<NoUserData>::default())
         .add_plugins(ChromaAberrationPlugin)
         .add_plugins(CRTPlugin)
         .add_plugins(GradientTintPlugin)
@@ -69,6 +73,9 @@ fn main() {
                 update_fps_text,
                 lut_apply_pending,
                 space_closes_scene_inspector,
+                enter_drops_player,
+                player_move,
+                player_input,
                 esc_quits_app,
             ),
         )
@@ -306,5 +313,22 @@ fn space_closes_scene_inspector(kb: Res<ButtonInput<KeyCode>>, mut state: ResMut
 fn esc_quits_app(kb: Res<ButtonInput<KeyCode>>, mut exit: EventWriter<bevy::app::AppExit>) {
     if kb.just_pressed(KeyCode::Escape) {
         exit.write(bevy::app::AppExit::Success);
+    }
+}
+
+fn enter_drops_player(
+    mut commands: Commands,
+    kb: Res<ButtonInput<KeyCode>>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    player_q: Query<Entity, With<Player>>,
+) {
+    for _p in &player_q {
+        // already have a player
+        return;
+    }
+
+    if kb.just_pressed(KeyCode::Enter) {
+        spawn_player(&mut commands, &mut meshes, &mut materials);
     }
 }
