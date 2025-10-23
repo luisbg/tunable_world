@@ -21,7 +21,7 @@ use crate::camera::{
     orbit_snap_to_index, spawn_camera,
 };
 use crate::inspector::{Editable, EditableMesh, InspectorPlugin, SpawnKind};
-use crate::player::{Player, player_input, player_move, spawn_player};
+use crate::player::{Player, player_horizontal_velocity, player_motion_with_gravity, spawn_player};
 use crate::post::chroma_aberration::ChromaAberrationPlugin;
 use crate::post::crt::CRTPlugin;
 use crate::post::gradient_tint::GradientTintPlugin;
@@ -74,8 +74,8 @@ fn main() {
                 lut_apply_pending,
                 space_closes_scene_inspector,
                 enter_drops_player,
-                player_move,
-                player_input,
+                player_horizontal_velocity,
+                player_motion_with_gravity,
                 esc_quits_app,
             ),
         )

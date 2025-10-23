@@ -1,9 +1,12 @@
 use bevy::prelude::*;
 use bevy_rapier3d::prelude::*;
 
-const PLAYER_START: Vec3 = Vec3::new(0.0, 2.0, 0.0);
+const PLAYER_START: Vec3 = Vec3::new(0.0, 4.0, 0.0);
 const PLAYER_SIZE: Vec2 = Vec2::new(0.25, 0.5);
-const PLAYER_SPEED: f32 = 5.0; // speed units per second
+const PLAYER_SPEED: f32 = 2.0; // speed units per second
+
+const GRAVITY_Y: f32 = -24.0; // tune to taste
+const TERMINAL_SPEED_Y: f32 = -50.0;
 
 #[derive(Component)]
 pub struct Player;
@@ -37,90 +40,95 @@ pub fn spawn_player(
             // small gap to avoid jitter when pressed against geometry
             offset: CharacterLength::Absolute(0.02),
             // Snap a little to the ground if you use slopes/steps:
-            // snap_to_ground: Some(CharacterLength::Absolute(0.1)),
+            snap_to_ground: Some(CharacterLength::Absolute(0.2)), // helps climb ramps & stay grounded
+            autostep: Some(CharacterAutostep {
+                max_height: CharacterLength::Absolute(0.4),
+                min_width: CharacterLength::Absolute(0.2),
+                include_dynamic_bodies: false,
+            }),
+            // Tweak slope angles to taste:
+            max_slope_climb_angle: 50.0_f32.to_radians(),
+            min_slope_slide_angle: 60.0_f32.to_radians(),
             ..default()
         },
     ));
 }
 
-pub fn player_move(
-    time: Res<Time>,
+// Sets X/Z from input
+pub fn player_horizontal_velocity(
+    mut q_player_vel: Query<&mut Velocity, With<Player>>,
+    keys: Res<ButtonInput<KeyCode>>,
     cam_q: Query<&Transform, With<Camera3d>>,
-    mut player_q: Query<(&Velocity, &mut KinematicCharacterController), With<Player>>,
 ) {
-    let dt = time.delta_secs();
     let Ok(cam_tf) = cam_q.single() else {
         return;
     };
 
-    // Camera-relative basis on ground plane (same as input system)
+    let mut input = Vec2::ZERO;
+    if keys.pressed(KeyCode::ArrowLeft) {
+        input.x -= 1.0;
+    }
+    if keys.pressed(KeyCode::ArrowRight) {
+        input.x += 1.0;
+    }
+    if keys.pressed(KeyCode::ArrowUp) {
+        input.y += 1.0;
+    }
+    if keys.pressed(KeyCode::ArrowDown) {
+        input.y -= 1.0;
+    }
+    if input.length_squared() > 1.0 {
+        input = input.normalize();
+    }
+
+    // Camera-relative basis on ground plane
     let cam_rot = cam_tf.rotation;
     let cam_right = cam_rot * Vec3::X;
     let cam_forward = cam_rot * -Vec3::Z;
 
-    let right_xz = Vec2::new(cam_right.x, cam_right.z).normalize();
-    let forward_xz = Vec2::new(cam_forward.x, cam_forward.z).normalize();
+    let right_xz = Vec2::new(cam_right.x, cam_right.z).normalize_or_zero();
+    let forward_xz = Vec2::new(cam_forward.x, cam_forward.z).normalize_or_zero();
 
-    for (vel, mut kcc) in &mut player_q {
-        // KCC expects per-frame translation
-        let desired = Vec3::new(vel.0.x, 0.0, vel.0.z) * dt;
+    // World-space movement direction on XZ
+    let dir_world_xz = (right_xz * input.x) + (forward_xz * input.y) * PLAYER_SPEED;
 
-        // --- Classify motion direction in *camera space* ---
-        let d2 = Vec2::new(desired.x, desired.z); // world motion on XZ
-        let x_comp = d2.dot(right_xz); // +right / -left
-        let y_comp = d2.dot(forward_xz); // +up (screen) / -down
-
-        // Apply the *unrotated* world translation to KCC
-        kcc.translation = Some(desired);
+    for mut vel in &mut q_player_vel {
+        let old_y = vel.y;
+        vel.0 = Vec3::new(
+            dir_world_xz.x * PLAYER_SPEED,
+            old_y,
+            dir_world_xz.y * PLAYER_SPEED,
+        );
     }
 }
 
-pub fn player_input(
-    keys: Res<ButtonInput<KeyCode>>,
-    cam_q: Query<&Transform, With<Camera3d>>,
-    mut q_player_vel: Query<&mut Velocity, With<Player>>,
+// Integrates Y and pushes KCC
+pub fn player_motion_with_gravity(
+    time: Res<Time>,
+    mut q: Query<
+        (
+            &mut Velocity,
+            &mut KinematicCharacterController,
+            Option<&KinematicCharacterControllerOutput>,
+        ),
+        With<Player>,
+    >,
 ) {
-    let Ok(cam_tf) = cam_q.single() else {
-        return;
-    };
+    let dt = time.delta_secs();
 
-    // Gather raw input in "screen space" (x = right, y = up)
-    let mut input = Vec2::ZERO;
-    if keys.pressed(KeyCode::ArrowUp) || keys.pressed(KeyCode::KeyW) {
-        input.y += 1.0;
-    }
-    if keys.pressed(KeyCode::ArrowDown) || keys.pressed(KeyCode::KeyS) {
-        input.y -= 1.0;
-    }
-    if keys.pressed(KeyCode::ArrowLeft) || keys.pressed(KeyCode::KeyA) {
-        input.x -= 1.0;
-    }
-    if keys.pressed(KeyCode::ArrowRight) || keys.pressed(KeyCode::KeyD) {
-        input.x += 1.0;
-    }
+    for (mut vel, mut kcc, output) in &mut q {
+        // grounded info from previous KCC step (present after the first physics tick)
+        let grounded = output.map(|o| o.grounded).unwrap_or(false);
 
-    let dir_world_xz = if input != Vec2::ZERO {
-        // Normalize so diagonals aren't faster
-        let input = input.normalize();
+        // gravity integration
+        if grounded && vel.y < 0.0 {
+            vel.y = 0.0; // clear accumulated downward speed
+        } else {
+            vel.y = (vel.y + GRAVITY_Y * dt).max(TERMINAL_SPEED_Y);
+        }
 
-        // Camera-relative axes projected to the ground (XZ) plane.
-        //    - "screen right" = camera's local +X
-        //    - "screen up"    = camera's *forward* (camera looks along -Z), so use -Z
-        let cam_rot = cam_tf.rotation;
-        let cam_right = cam_rot * Vec3::X;
-        let cam_forward = cam_rot * -Vec3::Z;
-
-        let right_xz = Vec2::new(cam_right.x, cam_right.z).normalize();
-        let forward_xz = Vec2::new(cam_forward.x, cam_forward.z).normalize();
-
-        // Build world-space 2D direction on XZ
-        (right_xz * input.x) + (forward_xz * input.y)
-    } else {
-        Vec2::ZERO
-    };
-
-    // Write a PER-SECOND velocity (do NOT multiply by delta here)
-    for mut vel in &mut q_player_vel {
-        vel.0 = Vec3::new(dir_world_xz.x, 0.0, dir_world_xz.y) * PLAYER_SPEED;
+        // The controller expects a displacement this frame.
+        let frame_delta = **vel * dt;
+        kcc.translation = Some(frame_delta);
     }
 }
