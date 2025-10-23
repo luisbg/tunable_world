@@ -700,6 +700,10 @@ fn inspector_window(
                             Editable,
                             Name::new("Bounds Collider"),
                             Transform::from_translation(Vec3::ZERO),
+                            EditableMesh {
+                                kind: SpawnKind::ColliderBox,
+                                collider: Some(true),
+                            },
                             ColliderBox,
                         ))
                         .id();
@@ -1014,7 +1018,15 @@ fn load_scene_system(
                     ),
                     scale: Vec3::new(obj.scale[0], obj.scale[1], obj.scale[2]),
                 };
-                let mut ecmd = commands.spawn((tf, Editable, ColliderBox));
+                let mut ecmd = commands.spawn((
+                    tf,
+                    Editable,
+                    ColliderBox,
+                    EditableMesh {
+                        kind: SpawnKind::ColliderBox,
+                        collider: Some(true),
+                    },
+                ));
                 if let Some(name) = obj.name.clone() {
                     ecmd.insert(Name::new(name));
                 }

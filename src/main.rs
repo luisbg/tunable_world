@@ -322,6 +322,7 @@ fn enter_drops_player(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     player_q: Query<Entity, With<Player>>,
+    object_q: Query<(Entity, &Transform, &EditableMesh), (With<Editable>, Without<Collider>)>,
 ) {
     for _p in &player_q {
         // already have a player
@@ -330,5 +331,56 @@ fn enter_drops_player(
 
     if kb.just_pressed(KeyCode::Enter) {
         spawn_player(&mut commands, &mut meshes, &mut materials);
+        make_colliders(&mut commands, object_q);
+    }
+}
+
+fn make_colliders(
+    commands: &mut Commands,
+    object_q: Query<(Entity, &Transform, &EditableMesh), (With<Editable>, Without<Collider>)>,
+) {
+    for (e, tf, mesh_info) in object_q {
+        commands.entity(e).insert(match mesh_info.kind {
+            SpawnKind::Cuboid => (
+                Collider::cuboid(0.5, 0.5, 0.5),
+                ColliderScale::Absolute(Vec3::new(tf.scale.x, tf.scale.y, tf.scale.z)),
+            ),
+            SpawnKind::Sphere => (
+                Collider::ball(0.5),
+                ColliderScale::Absolute(Vec3::new(tf.scale.x, tf.scale.y, tf.scale.z)),
+            ),
+            SpawnKind::Plane => (
+                Collider::cuboid(0.5, 0.01, 0.5),
+                ColliderScale::Absolute(Vec3::new(tf.scale.x, tf.scale.y, tf.scale.z)),
+            ),
+            SpawnKind::Prism => {
+                let tri = [
+                    Vec2::new(0.0, 1.0),
+                    Vec2::new(0.0, 0.0),
+                    Vec2::new(1.0, 0.0),
+                ];
+                let depth = 1.0;
+                let z0 = -0.5 * depth; // assume Extrusion centers around Z=0
+                let z1 = 0.5 * depth;
+
+                // Build vertex cloud for the convex-hull (6 verts: two triangle caps)
+                let mut pts: Vec<Vec3> = Vec::with_capacity(6);
+                for &p in &tri {
+                    pts.push(Vec3::new(p.x, p.y, z0));
+                }
+                for &p in &tri {
+                    pts.push(Vec3::new(p.x, p.y, z1));
+                }
+
+                (
+                    Collider::convex_hull(&pts).unwrap(),
+                    ColliderScale::Absolute(Vec3::new(tf.scale.x, tf.scale.y, tf.scale.z)),
+                )
+            }
+            SpawnKind::ColliderBox => (
+                Collider::cuboid(0.5, 0.5, 0.5),
+                ColliderScale::Absolute(Vec3::new(tf.scale.x, tf.scale.y, tf.scale.z)),
+            ),
+        });
     }
 }
