@@ -860,6 +860,35 @@ fn inspector_window(
                 state.window_open = true;
                 state.cache_initialized = false;
                 state.last_selected = Some(new_e);
+            } else if q_cb_ro.get(src).is_ok() {
+                // Duplicate ColliderBox: reuse the same transform; no mesh/material.
+                let tf_copy = if let Ok(tfm) = ps_tf_dup.p0().get(src) {
+                    *tfm
+                } else {
+                    Transform::IDENTITY
+                };
+
+                let new_name = "ColliderBox (copy)".to_string();
+
+                let ecmd = commands.spawn((
+                    tf_copy,
+                    Editable,
+                    Selected,
+                    ColliderBox,
+                    EditableMesh {
+                        kind: SpawnKind::ColliderBox,
+                        collider: Some(true),
+                    },
+                    Name::new(new_name),
+                ));
+
+                // Switch selection to the new copy
+                let new_e = ecmd.id();
+                commands.entity(src).remove::<Selected>();
+                state.selected = Some(new_e);
+                state.window_open = true;
+                state.cache_initialized = false;
+                state.last_selected = Some(new_e);
             }
         }
     }
