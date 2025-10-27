@@ -312,12 +312,12 @@ fn enter_drops_player(
     player_q: Query<Entity, With<Player>>,
     object_q: Query<(Entity, &Transform, &EditableMesh), (With<Editable>, Without<Collider>)>,
 ) {
-    for _p in &player_q {
-        // already have a player
-        return;
-    }
-
     if kb.just_pressed(KeyCode::Enter) {
+        if let Some(_p) = (&player_q).into_iter().next() {
+            // already have a player
+            return;
+        }
+
         spawn_player(&mut commands, &mut meshes, &mut materials);
         make_colliders(&mut commands, object_q);
     }
