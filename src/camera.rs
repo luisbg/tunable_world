@@ -6,6 +6,7 @@ use bevy::{
     },
     pbr::{DistanceFog, FogFalloff, ScreenSpaceAmbientOcclusion},
     prelude::*,
+    render::camera::ScalingMode,
 };
 
 use crate::post::{
@@ -20,6 +21,8 @@ const CAMERA_PITCH_SNAPBACK_DUR: f32 = 0.25;
 const CAMERA_PITCH_CHANGE_SPEED: f32 = 0.20;
 // const CAMERA_PITCH: f32 = 0.6154797_f32; // arcsin(1/√3) ≈ 0.6154797 rad ≈ 35.26439°
 const CAMERA_PITCH: f32 = std::f32::consts::FRAC_PI_6;
+
+const VIEWPORT_HEIGHT: f32 = 12.5;
 
 #[derive(Component)]
 pub struct FpsText;
@@ -61,6 +64,13 @@ pub fn spawn_camera(mut commands: Commands) {
     commands.spawn((
         Camera3d { ..default() },
         Transform::from_xyz(9.0, 9.0, 13.0).looking_at(Vec3::new(3.0, 1.0, 2.5), Vec3::Y),
+        Projection::from(OrthographicProjection {
+            // 6 world units per pixel of window height.
+            scaling_mode: ScalingMode::FixedVertical {
+                viewport_height: VIEWPORT_HEIGHT,
+            },
+            ..OrthographicProjection::default_3d()
+        }),
         Tonemapping::AcesFitted, // nice highlight rolloff
         // Subtle bloom; keep defaults tasteful. Use emissive accents to trigger it.
         Bloom::default(),
