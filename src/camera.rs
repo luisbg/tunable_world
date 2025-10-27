@@ -69,6 +69,7 @@ impl Plugin for CameraPlugin {
                 camera_pitch_controls.in_set(OrbitSet::Pose),
                 orbit_snap_to_index.in_set(OrbitSet::Pose),
                 orbit_camera_rotate_continuous.in_set(OrbitSet::Pose),
+                camera_projection_toggle_system,
             )
                 .chain(),
         );
@@ -334,6 +335,33 @@ pub fn camera_pitch_controls(
 
         if reset.timer.finished() {
             commands.entity(cam_entity).remove::<PitchReset>();
+        }
+    }
+}
+
+fn camera_projection_toggle_system(
+    keys: Res<ButtonInput<KeyCode>>,
+    mut q_cam: Query<&mut Projection, With<Camera3d>>,
+) {
+    let to_ortho = keys.just_pressed(KeyCode::KeyO);
+    let to_persp = keys.just_pressed(KeyCode::KeyP);
+    if !to_ortho && !to_persp {
+        return;
+    }
+
+    for mut proj in &mut q_cam {
+        if to_ortho {
+            *proj = Projection::Orthographic(OrthographicProjection {
+                scaling_mode: ScalingMode::FixedVertical {
+                    viewport_height: VIEWPORT_HEIGHT,
+                },
+                ..OrthographicProjection::default_3d()
+            });
+        } else if to_persp {
+            *proj = Projection::Perspective(PerspectiveProjection {
+                fov: std::f32::consts::FRAC_PI_4,
+                ..Default::default()
+            });
         }
     }
 }

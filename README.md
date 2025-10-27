@@ -66,7 +66,10 @@ assets/
 | **Q / E** | Move camera to prev/next coordinate |
 | **A / D** | Rotate camera smoothly |
 | **W / S** | Tilt camera up or down |
-| Spacebar | Show and hides the Inspector UI |
+| **Enter** | Drops a capsule player entity at 0,0 |
+| **Arrow keys** | Move the player entity |
+| **Spacebar** | Show and hides the Inspector UI |
+| **O / P** | Switch between orthographic and perspective projections |
 | Esc | Quit the application |
 
 Click on any object to select it (and have the Inspector UI appear).
