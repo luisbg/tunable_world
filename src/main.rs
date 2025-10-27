@@ -16,10 +16,7 @@ mod inspector;
 mod player;
 mod post;
 
-use crate::camera::{
-    OrbitSet, camera_pitch_controls, orbit_camera_hotkeys, orbit_camera_rotate_continuous,
-    orbit_snap_to_index, spawn_camera,
-};
+use crate::camera::{CameraPlugin, OrbitSet};
 use crate::inspector::{Editable, EditableMesh, InspectorPlugin, SpawnKind};
 use crate::player::{Player, player_horizontal_velocity, player_motion_with_gravity, spawn_player};
 use crate::post::chroma_aberration::ChromaAberrationPlugin;
@@ -54,6 +51,7 @@ fn main() {
             FrameTimeDiagnosticsPlugin::default(), // collects fps and frame time
         ))
         .add_plugins(RapierPhysicsPlugin::<NoUserData>::default())
+        .add_plugins(CameraPlugin)
         .add_plugins(ChromaAberrationPlugin)
         .add_plugins(CRTPlugin)
         .add_plugins(GradientTintPlugin)
@@ -62,7 +60,7 @@ fn main() {
         .add_plugins(EguiPlugin::default())
         .add_plugins(InspectorPlugin)
         .init_resource::<SceneEditState>()
-        .add_systems(Startup, (spawn_camera, spawn_light, spawn_scene))
+        .add_systems(Startup, (spawn_light, spawn_scene))
         .add_systems(PostStartup, setup_fps_text)
         .add_systems(EguiPrimaryContextPass, post_process_edit_panel)
         .configure_sets(Update, (OrbitSet::Input, OrbitSet::Pose).chain())
@@ -78,16 +76,6 @@ fn main() {
                 player_motion_with_gravity,
                 esc_quits_app,
             ),
-        )
-        .add_systems(
-            Update,
-            (
-                orbit_camera_hotkeys.in_set(OrbitSet::Input),
-                camera_pitch_controls.in_set(OrbitSet::Pose),
-                orbit_snap_to_index.in_set(OrbitSet::Pose),
-                orbit_camera_rotate_continuous.in_set(OrbitSet::Pose),
-            )
-                .chain(),
         )
         .run();
 }

@@ -59,6 +59,22 @@ pub struct PitchReset {
     start: f32,
 }
 
+pub struct CameraPlugin;
+impl Plugin for CameraPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_systems(Startup, spawn_camera).add_systems(
+            Update,
+            (
+                orbit_camera_hotkeys.in_set(OrbitSet::Input),
+                camera_pitch_controls.in_set(OrbitSet::Pose),
+                orbit_snap_to_index.in_set(OrbitSet::Pose),
+                orbit_camera_rotate_continuous.in_set(OrbitSet::Pose),
+            )
+                .chain(),
+        );
+    }
+}
+
 /// Camera with bloom, filmic tonemapping, gentle DoF-like vibe.
 pub fn spawn_camera(mut commands: Commands) {
     commands.spawn((
