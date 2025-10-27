@@ -19,8 +19,11 @@ const ANGULAR_SPEED: f32 = 0.8;
 
 const CAMERA_PITCH_SNAPBACK_DUR: f32 = 0.25;
 const CAMERA_PITCH_CHANGE_SPEED: f32 = 0.20;
-// const CAMERA_PITCH: f32 = 0.6154797_f32; // arcsin(1/√3) ≈ 0.6154797 rad ≈ 35.26439°
 const CAMERA_PITCH: f32 = std::f32::consts::FRAC_PI_6;
+
+// True isometric pitch ≈ 35.2643897° = asin(1/√3)
+const ISO_PITCH: f32 = 0.6154797_f32;
+const ISO_YAW: f32 = std::f32::consts::FRAC_PI_4; // 45°
 
 const VIEWPORT_HEIGHT: f32 = 12.5;
 
@@ -135,8 +138,8 @@ pub fn spawn_camera(mut commands: Commands) {
         },
         OrbitCamera {
             target: Vec3::ZERO,
-            index_4: 0,                                  // 0..3 → 1:30, 4:30, 7:30, 10:30
-            yaw_offset_rad: std::f32::consts::FRAC_PI_4, // 45°
+            index_4: 0,              // 0..3 → 1:30, 4:30, 7:30, 10:30
+            yaw_offset_rad: ISO_YAW, // 45°
             yaw_extra_rad: 0.0,
             pitch: CAMERA_PITCH,
         },
@@ -339,9 +342,12 @@ pub fn camera_pitch_controls(
     }
 }
 
+/// Toggle camera projection with keyboard:
+/// 'O' => Orthographic (isometric-style)
+/// 'P' => Perspective
 fn camera_projection_toggle_system(
     keys: Res<ButtonInput<KeyCode>>,
-    mut q_cam: Query<&mut Projection, With<Camera3d>>,
+    mut q_cam: Query<(&mut Projection, &mut Transform, &mut OrbitCamera), With<Camera3d>>,
 ) {
     let to_ortho = keys.just_pressed(KeyCode::KeyO);
     let to_persp = keys.just_pressed(KeyCode::KeyP);
@@ -349,7 +355,10 @@ fn camera_projection_toggle_system(
         return;
     }
 
-    for mut proj in &mut q_cam {
+    for (mut proj, mut tf, mut ocam) in &mut q_cam {
+        let target = ocam.target;
+        let dist = (tf.translation - target).length().max(0.0001);
+
         if to_ortho {
             *proj = Projection::Orthographic(OrthographicProjection {
                 scaling_mode: ScalingMode::FixedVertical {
@@ -357,11 +366,29 @@ fn camera_projection_toggle_system(
                 },
                 ..OrthographicProjection::default_3d()
             });
+
+            // Set yaw/pitch to true isometric
+            ocam.yaw_offset_rad = ISO_YAW;
+            ocam.pitch = ISO_PITCH;
         } else if to_persp {
             *proj = Projection::Perspective(PerspectiveProjection {
                 fov: std::f32::consts::FRAC_PI_4,
                 ..Default::default()
             });
+
+            // set pitch to 30°
+            ocam.pitch = CAMERA_PITCH;
         }
+
+        // Recompute position from yaw/pitch while preserving distance to target
+        let y = dist * ocam.pitch.sin();
+        let r_xy = (dist * ocam.pitch.cos()).abs();
+        let angle = ocam.yaw_offset_rad
+            + (ocam.index_4.rem_euclid(4) as f32) * std::f32::consts::FRAC_PI_2
+            + ocam.yaw_extra_rad;
+        let x = r_xy * angle.cos();
+        let z = r_xy * angle.sin();
+        let pos = Vec3::new(x, y, z) + target;
+        *tf = Transform::from_translation(pos).looking_at(target, Vec3::Y);
     }
 }
